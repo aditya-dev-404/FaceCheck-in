@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+
+  --app-color-bg: #EAF0E9;
+  --app-color-surface: #E3ECE1;
+  --app-color-surface-raised: #EEF4EC;
+
+  --app-color-text: #1E2B22;
+  --app-color-text-muted: #5B6C60;
+
+  --app-color-primary: #3F7A52;
+  --app-color-primary-hover: #356846;
+  --app-color-primary-fg: #F3FBF5;
+
+  --app-color-border: #C9D9C7;
+
+  --app-color-danger: #B3432F;
+  --app-color-warning: #B58A2E;
+  --app-color-success: #3F7A52;
+
+  --app-clay-light: rgba(255, 255, 255, 0.75);
+  --app-clay-dark: rgba(63, 90, 70, 0.30);
+  --app-shadow-clay: 8px 8px 16px var(--app-clay-dark), -8px -8px 16px var(--app-clay-light);
+  --app-shadow-clay-sm: 4px 4px 10px var(--app-clay-dark), -4px -4px 10px var(--app-clay-light);
+  --app-shadow-clay-inset: inset 4px 4px 8px var(--app-clay-dark), inset -4px -4px 8px var(--app-clay-light);
+
+  --app-radius-clay: 1.75rem;
+  --app-radius-clay-sm: 1rem;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --app-color-bg: #0F1712;
+  --app-color-surface: #16211B;
+  --app-color-surface-raised: #1B281F;
+
+  --app-color-text: #E6F0E8;
+  --app-color-text-muted: #9AB09F;
+
+  --app-color-primary: #57B67B;
+  --app-color-primary-hover: #4AA06A;
+  --app-color-primary-fg: #0B140F;
+
+  --app-color-border: #24352B;
+
+  --app-color-danger: #D9705C;
+  --app-color-warning: #D9B15C;
+  --app-color-success: #57B67B;
+
+  --app-clay-light: rgba(255, 255, 255, 0.04);
+  --app-clay-dark: rgba(0, 0, 0, 0.55);
+}
+
+@theme inline {
+  --color-bg: var(--app-color-bg);
+  --color-surface: var(--app-color-surface);
+  --color-surface-raised: var(--app-color-surface-raised);
+  --color-text: var(--app-color-text);
+  --color-text-muted: var(--app-color-text-muted);
+  --color-primary: var(--app-color-primary);
+  --color-primary-hover: var(--app-color-primary-hover);
+  --color-primary-fg: var(--app-color-primary-fg);
+  --color-border: var(--app-color-border);
+  --color-danger: var(--app-color-danger);
+  --color-warning: var(--app-color-warning);
+  --color-success: var(--app-color-success);
+
+  --shadow-clay: var(--app-shadow-clay);
+  --shadow-clay-sm: var(--app-shadow-clay-sm);
+  --shadow-clay-inset: var(--app-shadow-clay-inset);
+
+  --radius-clay: var(--app-radius-clay);
+  --radius-clay-sm: var(--app-radius-clay-sm);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+@layer components {
+  .clay-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-clay-sm px-5 py-2.5
+           font-medium text-sm shadow-clay-sm transition-shadow duration-150
+           active:shadow-clay-inset disabled:opacity-50 disabled:pointer-events-none
+           bg-primary text-primary-fg hover:bg-primary-hover;
+  }
+  .clay-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-clay-sm px-5 py-2.5
+           font-medium text-sm shadow-clay-sm transition-shadow duration-150
+           active:shadow-clay-inset disabled:opacity-50 disabled:pointer-events-none
+           bg-surface text-text hover:bg-surface-raised;
+  }
+  .clay-btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-clay-sm px-5 py-2.5
+           font-medium text-sm text-text hover:bg-surface transition-colors duration-150;
+  }
+
+  .clay-input,
+  .clay-select {
+    @apply w-full bg-surface text-text placeholder:text-text-muted rounded-clay-sm
+           px-4 py-2.5 text-sm border border-border shadow-clay-inset
+           focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow duration-150;
+  }
+
+  .clay-card {
+    @apply bg-surface rounded-clay shadow-clay p-6;
+  }
+
+  .clay-badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium
+           bg-surface shadow-clay-sm text-text-muted;
+  }
+
+  .clay-toggle-track {
+    @apply relative inline-flex h-7 w-12 items-center rounded-full bg-surface
+           shadow-clay-inset transition-colors duration-150;
+  }
+  .clay-toggle-thumb {
+    @apply inline-block h-5 w-5 transform rounded-full bg-primary shadow-clay-sm
+           transition-transform duration-150;
+  }
+
+  .clay-page {
+    @apply mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8;
+  }
+
+  .clay-page-header {
+    @apply flex flex-wrap items-end justify-between gap-4;
+  }
+
+  .clay-action {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-clay-sm px-3 py-2 text-sm font-medium text-text shadow-clay-sm transition-shadow hover:bg-surface-raised active:shadow-clay-inset disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .clay-action-danger {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-clay-sm px-3 py-2 text-sm font-medium text-danger shadow-clay-sm transition-shadow hover:bg-surface-raised active:shadow-clay-inset disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .clay-notice {
+    @apply rounded-clay-sm bg-surface-raised px-4 py-3 text-sm text-text-muted shadow-clay-inset;
+  }
+}

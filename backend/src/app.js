@@ -13,6 +13,7 @@ import userRoutes from "./routes/user.routes.js";
 import attendanceRoutes from "./routes/attendance.routes.js";
 import organizationRoutes from "./routes/organization.routes.js";
 import kioskRoutes from "./routes/kiosk.routes.js";
+import analyticsRoutes from "./routes/analytics.routes.js";
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/attendance", attendanceRoutes);
 app.use("/api/v1/organizations", organizationRoutes);
 app.use("/api/v1/kiosk", kioskRoutes);
+app.use("/api/v1/analytics", analyticsRoutes);
 
 // Must be registered last: catches errors thrown/forwarded from any route.
 app.use(errorHandler);

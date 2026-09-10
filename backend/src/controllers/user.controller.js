@@ -8,6 +8,8 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { getEmbeddingsFromImage } from "../services/faceMatch.service.js";
 import { deleteFlaggedImage, uploadAvatar, deleteImage } from "../services/cloudinary.service.js";
+import { sendMemberWelcomeEmail } from "../services/email.service.js";
+import { env } from "../config/env.js";
 /**
  * Enrollment flow: capture -> detect -> align -> embed -> store.
  * The detect/align/embed steps happen inside the ML service; here we just
@@ -112,6 +114,8 @@ const addMember = asyncHandler(async (req, res) => {
     role: "member",
     category: category || null,
   });
+
+  await sendMemberWelcomeEmail(email, name, password, `${env.CLIENT_URL}/login`);
 
   res
     .status(201)

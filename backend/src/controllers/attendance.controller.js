@@ -13,7 +13,7 @@ const markAttendance = asyncHandler(async (req, res) => {
     throw new ApiError(400, "An image file is required");
   }
 
-  const { record, user, score, flagged } = await attendanceService.markAttendance(
+  const { results, skippedCount, totalDetected } = await attendanceService.markAttendance(
     req.file.buffer,
     req.file.originalname,
     req.file.mimetype,
@@ -21,35 +21,25 @@ const markAttendance = asyncHandler(async (req, res) => {
     "admin"
   );
 
-  res.status(201).json(
-    new ApiResponse(
-      201,
-      {
-        user: { _id: user._id, name: user.name, email: user.email },
-        matchScore: score,
-        markedAt: record.markedAt,
-        flagged,
-      },
-      flagged
-        ? `Attendance marked for ${user.name} (flagged for admin review — low match confidence)`
-        : `Attendance marked for ${user.name}`
-    )
-  );
+  res.status(200).json(new ApiResponse(200, { results, skippedCount, totalDetected }, "Attendance processed"));
 });
 
 const getMyAttendance = asyncHandler(async (req, res) => {
-  const records = await attendanceService.getAttendanceForUser(req.user._id);
-  res.status(200).json(new ApiResponse(200, { records }, "Attendance history fetched"));
+  const { page, limit } = req.query;
+  const result = await attendanceService.getAttendanceForUser(req.user._id, { page, limit });
+  res.status(200).json(new ApiResponse(200, result, "Attendance history fetched"));
 });
 
 const getOrganizationAttendance = asyncHandler(async (req, res) => {
-  const { from, to, category } = req.query;
-  const records = await attendanceService.getAttendanceForOrganization(req.user.organization, {
+  const { from, to, category, page, limit } = req.query;
+  const result = await attendanceService.getAttendanceForOrganization(req.user.organization, {
     from,
     to,
     category,
+    page,
+    limit,
   });
-  res.status(200).json(new ApiResponse(200, { records }, "Organization attendance fetched"));
+  res.status(200).json(new ApiResponse(200, result, "Organization attendance fetched"));
 });
 
 /**

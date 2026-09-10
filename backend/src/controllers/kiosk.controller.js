@@ -15,7 +15,7 @@ const recognize = asyncHandler(async (req, res) => {
     throw new ApiError(400, "An image file is required");
   }
 
-  const { record, user, score, flagged } = await attendanceService.markAttendance(
+  const { results, skippedCount, totalDetected } = await attendanceService.markAttendance(
     req.file.buffer,
     req.file.originalname,
     req.file.mimetype,
@@ -23,18 +23,7 @@ const recognize = asyncHandler(async (req, res) => {
     "kiosk"
   );
 
-  res.status(201).json(
-    new ApiResponse(
-      201,
-      {
-        name: user.name,
-        matchScore: score,
-        markedAt: record.markedAt,
-        flagged,
-      },
-      `Attendance marked for ${user.name}`
-    )
-  );
+  res.status(200).json(new ApiResponse(200, { results, skippedCount, totalDetected }, "Attendance processed"));
 });
 
 /**

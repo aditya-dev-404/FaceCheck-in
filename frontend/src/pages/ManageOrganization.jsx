@@ -256,7 +256,7 @@ const ManageOrganization = () => {
               Save this secret now — it will not be shown again.
             </p>
             <div className="flex items-start gap-2 rounded-clay-sm bg-bg p-3 shadow-clay-sm">
-              <code className="min-w-0 flex-1 break-all text-xs text-text">{kioskSecret}</code>
+              <code className="min-w-0 pt-2 flex-1 break-all text-xs text-text">{kioskSecret}</code>
               <button type="button" onClick={handleCopyKioskSecret} className="clay-action shrink-0 px-2.5 py-1.5 text-xs" aria-label="Copy kiosk secret">
                 {kioskSecretCopied ? <MdCheck aria-hidden="true" /> : <MdContentCopy aria-hidden="true" />}
                 {kioskSecretCopied ? "Copied" : "Copy"}

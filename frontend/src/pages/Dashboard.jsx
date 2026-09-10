@@ -7,7 +7,10 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
-import { MdDownload, MdGroup, MdHowToReg, MdPersonAdd, MdSettings, MdVerifiedUser } from "react-icons/md";
+import { MdDownload, MdGroup, MdHowToReg, MdPersonAdd, MdSettings, MdChevronLeft, MdChevronRight, MdVerifiedUser, MdInsertChartOutlined, MdListAlt } from "react-icons/md";
+import AdminAnalytics from "../components/analytics/AdminAnalytics";
+import MemberAnalytics from "../components/analytics/MemberAnalytics";
+
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -16,24 +19,36 @@ const Dashboard = () => {
   const [categories, setCategories] = useState([]);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [tab, setTab] = useState("attendance"); // "attendance" | "analytics"
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
-    if (!user) return; // guards against a null user during a brief refresh window, which previously crashed this effect and left a blank screen until reload
+    if (!user) return;
 
     const fetchRecords = async () => {
+      setLoading(true);
       try {
         const endpoint = user.role === "admin" ? "/attendance/organization" : "/attendance/me";
-        const params = user.role === "admin" && categoryFilter ? { category: categoryFilter } : {};
+        const params = {
+          page,
+          limit: PAGE_SIZE,
+          ...(user.role === "admin" && categoryFilter ? { category: categoryFilter } : {}),
+        };
         const { data } = await axiosInstance.get(endpoint, { params });
         setRecords(data.data.records);
+        setTotalPages(data.data.totalPages || 1);
       } catch {
         setRecords([]);
+        setTotalPages(1);
       } finally {
         setLoading(false);
       }
     };
     fetchRecords();
-  }, [user, categoryFilter]);
+  }, [user, categoryFilter, page]);
+
 
   useEffect(() => {
     if (!user || user.role !== "admin") return;
@@ -112,64 +127,115 @@ const Dashboard = () => {
         )}
       </nav>
 
-      <div className="clay-card">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-text">
-            {user?.role === "admin" ? "Organization Attendance" : "Your Attendance History"}
-          </h2>
-          {user?.role === "admin" && (
-            <div className="flex items-center gap-2">
-              {categories.length > 0 && (
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="clay-select w-auto py-1"
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setTab("attendance")}
+          className={tab === "attendance" ? "clay-btn-primary" : "clay-btn-secondary"}
+        >
+          <MdListAlt aria-hidden="true" /> Attendance
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("analytics")}
+          className={tab === "analytics" ? "clay-btn-primary" : "clay-btn-secondary"}
+        >
+          <MdInsertChartOutlined aria-hidden="true" /> Analytics
+        </button>
+      </div>
+
+      {tab === "analytics" ? (
+        user?.role === "admin" ? <AdminAnalytics /> : <MemberAnalytics />
+      ) : (
+        <div className="clay-card">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-text">
+              {user?.role === "admin" ? "Organization Attendance" : "Your Attendance History"}
+            </h2>
+            {user?.role === "admin" && (
+              <div className="flex items-center gap-2">
+                {categories.length > 0 && (
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => {
+                      setCategoryFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className="clay-select w-auto py-1"
+                  >
+                    <option value="">All categories</option>
+                    {categories.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="clay-btn-primary px-3 py-1.5"
                 >
-                  <option value="">All categories</option>
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                  <MdDownload aria-hidden="true" /> {exporting ? "Exporting..." : "Download CSV"}
+                </button>
+              </div>
+            )}
+          </div>
+          {loading ? (
+            <p className="text-sm text-text-muted">Loading...</p>
+          ) : records.length === 0 ? (
+            <p className="clay-notice">No attendance records yet.</p>
+          ) : (
+            <>
+              <ul className="divide-y divide-border">
+                {records.map((record) => (
+                  <li key={record._id} className="flex items-center justify-between gap-3 py-3 text-sm text-text-muted">
+                    <span>
+                      {user?.role === "admin" && (
+                        <span className="font-medium text-text">{record.user?.name || record.memberName} — </span>
+                      )}
+                      {new Date(record.markedAt).toLocaleString()}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${record.markedVia === "admin" ? "bg-surface-raised text-warning" : "bg-surface-raised text-primary"
+                        }`}
+                    >
+                      {record.markedVia === "admin" ? "Admin Entry" : "Kiosk"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              {totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="clay-btn-secondary px-3 py-1.5 disabled:opacity-40"
+                    aria-label="Previous page"
+                  >
+                    <MdChevronLeft aria-hidden="true" />
+                  </button>
+                  <span className="text-sm text-text-muted">
+                    Page {page} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="clay-btn-secondary px-3 py-1.5 disabled:opacity-40"
+                    aria-label="Next page"
+                  >
+                    <MdChevronRight aria-hidden="true" />
+                  </button>
+                </div>
               )}
-              <button
-                type="button"
-                onClick={handleExport}
-                disabled={exporting}
-                className="clay-btn-primary px-3 py-1.5"
-              >
-                <MdDownload aria-hidden="true" /> {exporting ? "Exporting..." : "Download CSV"}
-              </button>
-            </div>
+            </>
           )}
         </div>
-        {loading ? (
-          <p className="text-sm text-text-muted">Loading...</p>
-        ) : records.length === 0 ? (
-          <p className="clay-notice">No attendance records yet.</p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {records.map((record) => (
-              <li key={record._id} className="flex items-center justify-between gap-3 py-3 text-sm text-text-muted">
-                <span>
-                  {user?.role === "admin" && (
-                    <span className="font-medium text-text">{record.user?.name || record.memberName} — </span>
-                  )}
-                  {new Date(record.markedAt).toLocaleString()}
-                </span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    record.markedVia === "admin" ? "bg-surface-raised text-warning" : "bg-surface-raised text-primary"
-                  }`}
-                >
-                  {record.markedVia === "admin" ? "Admin Entry" : "Kiosk"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      )}
     </div>
   );
 };

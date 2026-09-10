@@ -5,14 +5,32 @@ import KioskNavbar from "../components/KioskNavbar";
 
 const STORAGE_KEY = "facecheckin_kiosk_credentials";
 const CAPTURE_INTERVAL_MS = 3000;
-const RESULT_PAUSE_MS = 8000;
 
-// Kiosk auth is header-based (org code + secret), not cookie/JWT-based, so
-// this uses a plain axios instance rather than the shared axiosInstance —
-// no withCredentials, no refresh-token interceptor, none of that applies here.
 const kioskApi = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1",
 });
+
+const statusStyles = {
+  marked: "bg-green-600/90",
+  flagged: "bg-amber-600/90",
+  "already-marked": "bg-amber-600/90",
+  "not-recognized": "bg-red-600/90",
+};
+
+const statusLabel = (r) => {
+  switch (r.status) {
+    case "marked":
+      return `Welcome, ${r.name}!`;
+    case "flagged":
+      return `Welcome, ${r.name} (flagged for review)`;
+    case "already-marked":
+      return `${r.name} — already marked today`;
+    case "not-recognized":
+      return "Face not recognized";
+    default:
+      return "";
+  }
+};
 
 const Kiosk = () => {
   const [credentials, setCredentials] = useState(() => {
@@ -23,14 +41,14 @@ const Kiosk = () => {
   const [secretInput, setSecretInput] = useState("");
   const [orgInfo, setOrgInfo] = useState(null);
 
-  const [status, setStatus] = useState("watching"); // "watching" | "processing" | "result"
-  const [resultMessage, setResultMessage] = useState("");
-  const [resultType, setResultType] = useState(""); // "success" | "error" | "warning"
+  const [status, setStatus] = useState("watching"); // "watching" | "result"
+  const [results, setResults] = useState([]);
+  const [skippedCount, setSkippedCount] = useState(0);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const pausedRef = useRef(false);
+  const processingRef = useRef(false);
 
   useEffect(() => {
     if (!credentials) return;
@@ -55,20 +73,8 @@ const Kiosk = () => {
       .catch(() => setOrgInfo(null));
   }, [credentials]);
 
-  const showResult = (message, type) => {
-    pausedRef.current = true;
-    setStatus("result");
-    setResultMessage(message);
-    setResultType(type);
-    setTimeout(() => {
-      pausedRef.current = false;
-      setStatus("watching");
-      setResultMessage("");
-    }, RESULT_PAUSE_MS);
-  };
-
   const captureAndRecognize = useCallback(async () => {
-    if (pausedRef.current || !videoRef.current || !canvasRef.current) return;
+    if (processingRef.current || !videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -81,6 +87,7 @@ const Kiosk = () => {
     canvas.toBlob(
       async (blob) => {
         if (!blob) return;
+        processingRef.current = true;
         const formData = new FormData();
         formData.append("image", blob, "capture.jpg");
 
@@ -91,28 +98,21 @@ const Kiosk = () => {
               "X-Kiosk-Secret": credentials.secret,
             },
           });
-          showResult(
-            data.data.flagged
-              ? `Welcome, ${data.data.name} (flagged for review)`
-              : `Welcome, ${data.data.name}!`,
-            "success"
-          );
+          setResults(data.data.results);
+          setSkippedCount(data.data.skippedCount || 0);
+          setStatus("result");
         } catch (err) {
           const statusCode = err.response?.status;
           const message = err.response?.data?.message || "";
 
           if (statusCode === 422 && message.includes("No face")) {
-            return; // nobody in frame — stay silent, keep watching
-          }
-          if (statusCode === 404) {
-            showResult("Face not recognized", "error");
-          } else if (statusCode === 409) {
-            showResult(message, "warning");
-          } else if (statusCode === 400 && message.includes("Multiple")) {
-            showResult("Multiple faces detected — one person at a time", "warning");
+            setStatus("watching"); // nobody in frame — stay silent, keep watching
           } else {
-            showResult("Could not process. Retrying...", "error");
+            setResults([{ status: "not-recognized", name: "Could not process. Retrying..." }]);
+            setStatus("result");
           }
+        } finally {
+          processingRef.current = false;
         }
       },
       "image/jpeg",
@@ -167,17 +167,21 @@ const Kiosk = () => {
 
       <KioskNavbar organization={orgInfo} organizationCode={credentials.orgCode} status={status} onReset={handleResetKiosk} />
 
-      {status === "result" && (
-        <div
-          className={`absolute inset-x-0 bottom-0 p-6 text-center text-2xl font-semibold text-white ${
-            resultType === "success"
-              ? "bg-green-600/90"
-              : resultType === "warning"
-                ? "bg-amber-600/90"
-                : "bg-red-600/90"
-          }`}
-        >
-          {resultMessage}
+      {status === "result" && results.length > 0 && (
+        <div className="absolute inset-x-0 bottom-0 max-h-[50vh] overflow-y-auto p-4 space-y-2">
+          {results.map((r, i) => (
+            <div
+              key={i}
+              className={`rounded-clay-sm p-4 text-center text-lg font-semibold text-white ${statusStyles[r.status] || "bg-red-600/90"}`}
+            >
+              {statusLabel(r)}
+            </div>
+          ))}
+          {skippedCount > 0 && (
+            <div className="rounded-clay-sm bg-black/70 p-3 text-center text-sm text-white">
+              {skippedCount} more face{skippedCount > 1 ? "s" : ""} detected but not processed — please check in again
+            </div>
+          )}
         </div>
       )}
     </div>

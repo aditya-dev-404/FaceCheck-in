@@ -17,6 +17,31 @@ const getTodayRange = () => {
 };
 
 /**
+ * Computes how late an attendance mark was, relative to a member's
+ * assigned checkInTime + gracePeriodMinutes. Returns null when on-time or
+ * when no checkInTime has been assigned to this member yet. Returned as a
+ * human-readable duration string (e.g. "12m late", "1h 5m late") rather
+ * than a boolean, since analytics wants to know how late, not just
+ * whether.
+ */
+const computeLateBy = (markedAt, checkInTime, gracePeriodMinutes) => {
+  if (!checkInTime) return null;
+
+  const [hours, minutes] = checkInTime.split(":").map(Number);
+  const threshold = new Date(markedAt);
+  threshold.setHours(hours, minutes + (gracePeriodMinutes || 0), 0, 0);
+
+  const diffMs = markedAt - threshold;
+  if (diffMs <= 0) return null;
+
+  const diffMinutes = Math.round(diffMs / 60000);
+  if (diffMinutes < 60) return `${diffMinutes}m late`;
+  const h = Math.floor(diffMinutes / 60);
+  const m = diffMinutes % 60;
+  return m > 0 ? `${h}h ${m}m late` : `${h}h late`;
+};
+
+/**
  * Full recognition flow: image -> detect/embed (ML service) -> match
  * against enrolled faces -> dedupe against today's records -> write
  * AttendanceRecord.
@@ -63,6 +88,13 @@ const markAttendance = async (imageBuffer, filename, mimetype, organizationId, m
       continue;
     }
 
+    const membership = await Membership.findOne({
+      person: person._id,
+      organization: organizationId,
+    }).select("checkInTime gracePeriodMinutes flaggedImagePublicId");
+
+    const markedAt = new Date();
+    const lateBy = computeLateBy(markedAt, membership?.checkInTime, membership?.gracePeriodMinutes);
     const flagReason = flagged ? `Borderline face match confidence (score: ${score.toFixed(4)})` : null;
 
     await AttendanceRecord.create({
@@ -73,17 +105,14 @@ const markAttendance = async (imageBuffer, filename, mimetype, organizationId, m
       memberName: person.name,
       memberEmail: person.email,
       isFlagged: flagged,
+      lateBy,
       markedVia,
+      markedAt,
     });
 
     if (flagged) {
-      const existingMembership = await Membership.findOne({
-        person: person._id,
-        organization: organizationId,
-      }).select("flaggedImagePublicId");
-
-      if (existingMembership?.flaggedImagePublicId) {
-        await deleteFlaggedImage(existingMembership.flaggedImagePublicId).catch((err) =>
+      if (membership?.flaggedImagePublicId) {
+        await deleteFlaggedImage(membership.flaggedImagePublicId).catch((err) =>
           console.error("Failed to delete previous flagged image:", err.message)
         );
       }

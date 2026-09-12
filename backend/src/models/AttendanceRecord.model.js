@@ -37,6 +37,10 @@ const attendanceRecordSchema = new Schema(
       type: Boolean,
       default: false, // this specific record's match score fell in the borderline zone
     },
+    lateBy: {
+      type: String,
+      default: null, // e.g. "12m late" — null means on-time or no checkInTime configured for this member
+    },
     markedVia: {
       type: String,
       enum: ["kiosk", "admin"],

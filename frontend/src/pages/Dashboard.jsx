@@ -274,11 +274,18 @@ const Dashboard = () => {
                       )}
                       {new Date(record.markedAt).toLocaleString()}
                     </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${record.markedVia === "admin" ? "bg-surface-raised text-warning" : "bg-surface-raised text-primary"
-                        }`}
-                    >
-                      {record.markedVia === "admin" ? "Admin Entry" : "Kiosk"}
+                    <span className="flex items-center gap-2">
+                      {record.lateBy && (
+                        <span className="rounded-full bg-surface-raised px-2 py-0.5 text-xs font-medium text-danger">
+                          {record.lateBy}
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${record.markedVia === "admin" ? "bg-surface-raised text-warning" : "bg-surface-raised text-primary"
+                          }`}
+                      >
+                        {record.markedVia === "admin" ? "Admin Entry" : "Kiosk"}
+                      </span>
                     </span>
                   </li>
                 ))}

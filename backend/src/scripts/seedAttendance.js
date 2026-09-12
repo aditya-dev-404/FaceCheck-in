@@ -1,10 +1,10 @@
 import "dotenv/config";
 import mongoose from "mongoose";
-import bcrypt from "bcrypt";
-import { Organization } from "../models/organization.model.js";
-import { User } from "../models/user.model.js";
-import { FaceEmbedding } from "../models/faceEmbedding.model.js";
-import { AttendanceRecord } from "../models/attendanceRecord.model.js";
+import { Organization } from "../models/Organization.model.js";
+import { Person } from "../models/Person.model.js";
+import { Membership } from "../models/Membership.model.js";
+import { FaceEmbedding } from "../models/FaceEmbedding.model.js";
+import { AttendanceRecord } from "../models/AttendanceRecord.model.js";
 
 const MEMBERS_PER_CATEGORY = 5;
 const DAYS_BACK = 90;
@@ -19,6 +19,23 @@ function randomEmbedding() {
 function isWeekday(date) {
   const day = date.getDay();
   return day !== 0 && day !== 6;
+}
+
+function computeLateBy(markedAt, checkInTime, gracePeriodMinutes) {
+  if (!checkInTime) return null;
+
+  const [hours, minutes] = checkInTime.split(":").map(Number);
+  const threshold = new Date(markedAt);
+  threshold.setHours(hours, minutes + (gracePeriodMinutes || 0), 0, 0);
+
+  const diffMs = markedAt - threshold;
+  if (diffMs <= 0) return null;
+
+  const diffMinutes = Math.round(diffMs / 60000);
+  if (diffMinutes < 60) return `${diffMinutes}m late`;
+  const h = Math.floor(diffMinutes / 60);
+  const m = diffMinutes % 60;
+  return m > 0 ? `${h}h ${m}m late` : `${h}h late`;
 }
 
 async function run() {
@@ -37,38 +54,48 @@ async function run() {
   }
 
   const categories = org.categories?.length ? org.categories : ["General"];
-  const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
 
-  const members = [];
+  const members = []; // each entry: { person, membership }
+
   for (const category of categories) {
     for (let i = 1; i <= MEMBERS_PER_CATEGORY; i++) {
       const name = `${category} Seed Member ${i}`;
       const email = `seed.${category.toLowerCase().replace(/\s+/g, "")}.${i}@facecheckin.test`;
 
-      const existing = await User.findOne({ email, organization: org._id });
-      if (existing) {
-        members.push(existing);
-        continue;
+      let person = await Person.findOne({ email });
+      if (!person) {
+        person = await Person.create({
+          name,
+          email,
+          password: SEED_PASSWORD, // pre-save hook hashes it once
+        });
       }
 
-      const user = await User.create({
-        organization: org._id,
-        name,
-        email,
-        password: passwordHash,
-        role: "member",
-        category,
-        isEnrolled: true,
-        isActive: true,
-      });
+      let membership = await Membership.findOne({ person: person._id, organization: org._id });
+      if (!membership) {
+        // Fixed check-in time of 09:00 with a 10-minute grace period for
+        // every seeded member, so late-entry data has something realistic
+        // to compare against.
+        membership = await Membership.create({
+          person: person._id,
+          organization: org._id,
+          role: "member",
+          category,
+          status: "active",
+          isEnrolled: true,
+          isActive: true,
+          checkInTime: "09:00",
+          gracePeriodMinutes: 10,
+        });
 
-      await FaceEmbedding.create({
-        user: user._id,
-        organization: org._id,
-        embedding: randomEmbedding(),
-      });
+        await FaceEmbedding.create({
+          person: person._id,
+          organization: org._id,
+          embedding: randomEmbedding(),
+        });
+      }
 
-      members.push(user);
+      members.push({ person, membership });
     }
   }
 
@@ -77,7 +104,7 @@ async function run() {
   const today = new Date();
   const records = [];
 
-  for (const member of members) {
+  for (const { person, membership } of members) {
     // each member gets their own baseline attendance rate, 80-97%, so the
     // dashboard shows real variance instead of a flat line
     const baseRate = 0.80 + Math.random() * 0.17;
@@ -97,14 +124,17 @@ async function run() {
         ? 0.40 + Math.random() * 0.10 // between MATCH_THRESHOLD and FLAG_THRESHOLD
         : 0.60 + Math.random() * 0.35;
 
+      const lateBy = computeLateBy(markedAt, membership.checkInTime, membership.gracePeriodMinutes);
+
       records.push({
-        user: member._id,
+        person: person._id,
         organization: org._id,
         matchScore: Number(matchScore.toFixed(4)),
-        category: member.category,
-        memberName: member.name,
-        memberEmail: member.email,
+        category: membership.category,
+        memberName: person.name,
+        memberEmail: person.email,
         isFlagged,
+        lateBy,
         markedVia: "kiosk",
         markedAt,
       });

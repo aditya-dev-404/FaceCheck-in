@@ -1,5 +1,3 @@
-import bcrypt from "bcrypt";
-
 import { Person } from "../models/Person.model.js";
 import { Membership } from "../models/Membership.model.js";
 import { FaceEmbedding } from "../models/FaceEmbedding.model.js";
@@ -19,6 +17,8 @@ import crypto from "crypto";
 // req.params.id is a Person._id — this stayed stable across the
 // User -> Person/Membership migration (Person._id === old User._id), so
 // no frontend changes were needed for these routes.
+
+const SET_PASSWORD_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours — longer than the reset-password window since this is a one-time welcome link, not a security-sensitive reset
 
 /**
  * Enrollment flow: capture -> detect -> align -> embed -> store.
@@ -180,16 +180,16 @@ const acceptInvite = asyncHandler(async (req, res) => {
  * Admin-only: adds a member to the admin's own organization.
  *
  * Branches on whether a Person with this email already exists:
- *  - NEW email -> today's flow: create Person + active Membership, admin
- *    sets the initial password, welcome email sent.
+ *  - NEW email -> create Person with no password + active Membership, a
+ *    "set your password" email is sent with a one-time token link so the
+ *    person can activate their own account (no password is ever chosen
+ *    by the admin).
  *  - EXISTING email -> INVITE flow: create a "pending" Membership only
  *    (no password field involved — they already have one), an invite
- *    email is sent instead of a welcome email. The Membership doesn't
- *    count for attendance/dashboards/kiosk matching until the person logs
- *    in and accepts it via acceptInvite above.
+ *    email is sent instead. The Membership doesn't count for
+ *    attendance/dashboards/kiosk matching until the person logs in and
+ *    accepts it via acceptInvite above.
  */
-const SET_PASSWORD_TOKEN_EXPIRY_MS = 48 * 60 * 60 * 1000; // 24 hours — longer than the reset-password window since this is a one-time welcome link, not a security-sensitive reset
-
 const addMember = asyncHandler(async (req, res) => {
   const { name, email, category } = req.body;
 
@@ -261,11 +261,7 @@ const addMember = asyncHandler(async (req, res) => {
     status: "active",
   });
 
-  await sendSetPasswordEmail(
-    email,
-    name,
-    `${env.CLIENT_URL}/set-password/${rawToken}`
-  );
+  await sendSetPasswordEmail(email, name, `${env.CLIENT_URL}/set-password/${rawToken}`);
 
   res
     .status(201)
@@ -292,7 +288,7 @@ const addMember = asyncHandler(async (req, res) => {
  */
 const listMembers = asyncHandler(async (req, res) => {
   const memberships = await Membership.find({ organization: req.user.organization, role: "member" })
-    .select("category status isEnrolled isActive isFlagged flagReason flaggedAt flaggedImageUrl")
+    .select("category status isEnrolled isActive isFlagged flagReason flaggedAt flaggedImageUrl checkInTime gracePeriodMinutes")
     .populate("person", "name email")
     .sort({ isFlagged: -1, "person.name": 1 });
 
@@ -310,6 +306,8 @@ const listMembers = asyncHandler(async (req, res) => {
       flagReason: m.flagReason,
       flaggedAt: m.flaggedAt,
       flaggedImageUrl: m.flaggedImageUrl,
+      checkInTime: m.checkInTime,
+      gracePeriodMinutes: m.gracePeriodMinutes,
     }))
     .sort((a, b) => (b.isFlagged - a.isFlagged) || a.name.localeCompare(b.name));
 
@@ -317,7 +315,8 @@ const listMembers = asyncHandler(async (req, res) => {
 });
 
 /**
- * Admin-only: edits a member's name/email (on Person) or category (on
+ * Admin-only: edits a member's name/email (on Person), category (on
+ * Membership), or their late-entry check-in time / grace period (on
  * Membership). Scoped to the admin's own org and to role "member" so an
  * admin can never edit another org's people or another admin's account
  * through this route.
@@ -357,6 +356,21 @@ const updateMember = asyncHandler(async (req, res) => {
     membership.category = category;
   }
 
+  if (req.body.checkInTime !== undefined) {
+    if (req.body.checkInTime !== null && !/^([01]\d|2[0-3]):([0-5]\d)$/.test(req.body.checkInTime)) {
+      throw new ApiError(400, "checkInTime must be in HH:mm 24-hour format");
+    }
+    membership.checkInTime = req.body.checkInTime;
+  }
+
+  if (req.body.gracePeriodMinutes !== undefined) {
+    const grace = Number(req.body.gracePeriodMinutes);
+    if (Number.isNaN(grace) || grace < 0) {
+      throw new ApiError(400, "gracePeriodMinutes must be a non-negative number");
+    }
+    membership.gracePeriodMinutes = grace;
+  }
+
   await person.save();
   await membership.save();
 
@@ -365,7 +379,16 @@ const updateMember = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(
         200,
-        { user: { _id: person._id, name: person.name, email: person.email, category: membership.category } },
+        {
+          user: {
+            _id: person._id,
+            name: person.name,
+            email: person.email,
+            category: membership.category,
+            checkInTime: membership.checkInTime,
+            gracePeriodMinutes: membership.gracePeriodMinutes,
+          },
+        },
         "Member updated"
       )
     );

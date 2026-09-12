@@ -27,6 +27,14 @@ const membershipSchema = new Schema(
       type: String,
       required: true,
     },
+    checkInTime: {
+      type: String, // "HH:mm" 24-hr format, e.g. "09:00" — null means no check-in time assigned
+      default: null,
+    },
+    gracePeriodMinutes: {
+      type: Number,
+      default: 10,
+    },
     // "active": full member, counts for attendance/dashboards/kiosk matching.
     // "pending": created via invite (addMember found an existing Person) —
     // doesn't count anywhere until the person logs in and accepts it.

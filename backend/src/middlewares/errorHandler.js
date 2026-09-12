@@ -8,6 +8,7 @@
 import { ApiError } from "../utils/ApiError.js";
 
 const errorHandler = (err, req, res, next) => {
+  console.error(err.stack); // TEMP — remove after debugging
   let error = err;
 
   // Normalize anything that isn't already an ApiError into one, so the

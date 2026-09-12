@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
-import { MdDownload, MdGroup, MdHowToReg, MdPersonAdd, MdSettings, MdChevronLeft, MdChevronRight, MdVerifiedUser, MdInsertChartOutlined, MdListAlt } from "react-icons/md";
+import { MdDownload, MdGroup, MdHowToReg, MdPersonAdd, MdSettings, MdChevronLeft, MdChevronRight, MdVerifiedUser, MdInsertChartOutlined, MdListAlt, MdMailOutline } from "react-icons/md";
 import AdminAnalytics from "../components/analytics/AdminAnalytics";
 import MemberAnalytics from "../components/analytics/MemberAnalytics";
 
@@ -23,6 +23,43 @@ const Dashboard = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const PAGE_SIZE = 20;
+
+  // Pending invites — orgs (possibly not the one currently logged into)
+  // that have added this person and are waiting on acceptance.
+  const [invites, setInvites] = useState([]);
+  const [invitesLoading, setInvitesLoading] = useState(true);
+  const [acceptingId, setAcceptingId] = useState(null);
+  const [inviteError, setInviteError] = useState("");
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchInvites = async () => {
+      setInvitesLoading(true);
+      try {
+        const { data } = await axiosInstance.get("/users/me/invites");
+        setInvites(data.data.invites);
+      } catch {
+        setInvites([]);
+      } finally {
+        setInvitesLoading(false);
+      }
+    };
+    fetchInvites();
+  }, [user]);
+
+  const handleAcceptInvite = async (membershipId) => {
+    setAcceptingId(membershipId);
+    setInviteError("");
+    try {
+      await axiosInstance.patch(`/users/me/invites/${membershipId}/accept`);
+      setInvites((prev) => prev.filter((invite) => invite.membershipId !== membershipId));
+    } catch (err) {
+      setInviteError(err.response?.data?.message || "Could not accept invite");
+    } finally {
+      setAcceptingId(null);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -87,6 +124,46 @@ const Dashboard = () => {
   return (
     <div className="clay-page">
       <div className="clay-page-header"><div><p className="text-sm font-medium text-primary">{user?.role === "admin" ? "Organization overview" : "Your attendance"}</p><h1 className="mt-1 text-2xl font-semibold text-text">Welcome back, {user?.name}</h1></div><div className="flex h-12 w-12 items-center justify-center rounded-clay-sm bg-surface-raised text-primary shadow-clay-inset"><MdVerifiedUser aria-hidden="true" className="text-2xl" /></div></div>
+
+      {!invitesLoading && invites.length > 0 && (
+        <div className="clay-card space-y-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-text">
+            <MdMailOutline aria-hidden="true" className="text-lg text-primary" />
+            {invites.length === 1 ? "You've been invited to join an organization" : `You've been invited to join ${invites.length} organizations`}
+          </h2>
+          {inviteError && <p className="text-sm text-danger">{inviteError}</p>}
+          <ul className="space-y-2">
+            {invites.map((invite) => (
+              <li
+                key={invite.membershipId}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-clay-sm bg-surface-raised px-4 py-3 shadow-clay-sm"
+              >
+                <div className="flex items-center gap-3">
+                  {invite.organization?.logoUrl ? (
+                    <img src={invite.organization.logoUrl} alt="" className="h-8 w-8 rounded-clay-sm object-cover" />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-clay-sm bg-primary text-xs font-semibold text-primary-fg">
+                      {invite.organization?.name?.[0] || "?"}
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm font-medium text-text">{invite.organization?.name}</p>
+                    {invite.category && <p className="text-xs text-text-muted">Category: {invite.category}</p>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAcceptInvite(invite.membershipId)}
+                  disabled={acceptingId === invite.membershipId}
+                  className="clay-btn-primary px-3 py-1.5 text-sm disabled:opacity-50"
+                >
+                  {acceptingId === invite.membershipId ? "Accepting..." : "Accept"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <nav className="clay-card flex flex-wrap gap-3 p-4">
         {!user?.isEnrolled && (
@@ -193,7 +270,7 @@ const Dashboard = () => {
                   <li key={record._id} className="flex items-center justify-between gap-3 py-3 text-sm text-text-muted">
                     <span>
                       {user?.role === "admin" && (
-                        <span className="font-medium text-text">{record.user?.name || record.memberName} — </span>
+                        <span className="font-medium text-text">{record.person?.name || record.memberName} — </span>
                       )}
                       {new Date(record.markedAt).toLocaleString()}
                     </span>

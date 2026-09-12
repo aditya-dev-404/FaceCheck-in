@@ -7,9 +7,9 @@ import mongoose, { Schema } from "mongoose";
  */
 const attendanceRecordSchema = new Schema(
   {
-    user: {
+    person: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Person",
       required: true,
     },
     organization: {
@@ -23,7 +23,7 @@ const attendanceRecordSchema = new Schema(
     },
     category: {
       type: String,
-      default: null, // snapshot of the user's category at the time of marking, so it stays accurate even if their category is changed later
+      default: null, // snapshot of the member's category at the time of marking, so it stays accurate even if their category is changed later
     },
     memberName: {
       type: String,
@@ -50,7 +50,7 @@ const attendanceRecordSchema = new Schema(
   { timestamps: true }
 );
 
-// Prevents duplicate attendance rows for the same user on the same calendar day.
-attendanceRecordSchema.index({ user: 1, markedAt: 1 });
+// Prevents duplicate attendance rows for the same person on the same calendar day.
+attendanceRecordSchema.index({ person: 1, markedAt: 1 });
 
 export const AttendanceRecord = mongoose.model("AttendanceRecord", attendanceRecordSchema);

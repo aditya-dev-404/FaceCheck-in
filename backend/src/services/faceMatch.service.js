@@ -1,6 +1,7 @@
 import axios from "axios";
 
 import { FaceEmbedding } from "../models/FaceEmbedding.model.js";
+import { Membership } from "../models/Membership.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { env } from "../config/env.js";
 
@@ -53,11 +54,19 @@ const cosineSimilarity = (a, b) => {
  * Compares a freshly generated embedding against every enrolled
  * FaceEmbedding in the same organization, returning the closest match
  * if — and only if — it clears MATCH_THRESHOLD.
+ *
+ * category now lives on Membership (not on Person), so it's fetched in a
+ * second lookup once we know which person matched. That lookup also acts
+ * as a defensive guard: a "pending" invite's Membership shouldn't have a
+ * FaceEmbedding for this org yet anyway (nothing copies one until they
+ * accept), but requiring an ACTIVE Membership here means a match can
+ * never be recorded against someone who hasn't accepted, even if some
+ * future code path ever created an embedding early.
  */
 const findBestMatch = async (embedding, organizationId) => {
   const enrolled = await FaceEmbedding.find({ organization: organizationId }).populate(
-    "user",
-    "name email category"
+    "person",
+    "name email"
   );
 
   let bestMatch = null;
@@ -75,7 +84,24 @@ const findBestMatch = async (embedding, organizationId) => {
     return { matched: false, score: bestScore };
   }
 
-  return { matched: true, score: bestScore, user: bestMatch.user, flagged: bestScore < FLAG_THRESHOLD };
+  const membership = await Membership.findOne({
+    person: bestMatch.person._id,
+    organization: organizationId,
+    status: "active",
+  }).select("category");
+
+  if (!membership) {
+    // No active membership for this org (shouldn't happen — fail closed).
+    return { matched: false, score: bestScore };
+  }
+
+  return {
+    matched: true,
+    score: bestScore,
+    person: bestMatch.person,
+    category: membership.category,
+    flagged: bestScore < FLAG_THRESHOLD,
+  };
 };
 
 export { getEmbeddingsFromImage, cosineSimilarity, findBestMatch, MATCH_THRESHOLD, FLAG_THRESHOLD };

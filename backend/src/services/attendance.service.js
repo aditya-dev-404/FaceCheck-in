@@ -1,12 +1,12 @@
 import { AttendanceRecord } from "../models/AttendanceRecord.model.js";
-import { User } from "../models/User.model.js";
+import { Membership } from "../models/Membership.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { getEmbeddingsFromImage, findBestMatch } from "./faceMatch.service.js";
 import { uploadFlaggedImage, deleteFlaggedImage } from "./cloudinary.service.js";
 
 /**
  * Returns the [start, end) Date range for "today" in server-local time,
- * used to check whether a user has already been marked present today.
+ * used to check whether a person has already been marked present today.
  */
 const getTodayRange = () => {
   const start = new Date();
@@ -44,7 +44,7 @@ const markAttendance = async (imageBuffer, filename, mimetype, organizationId, m
   const results = [];
 
   for (const face of facesToProcess) {
-    const { matched, score, user, flagged } = await findBestMatch(face.embedding, organizationId);
+    const { matched, score, person, category, flagged } = await findBestMatch(face.embedding, organizationId);
 
     if (!matched) {
       results.push({ status: "not-recognized", score });
@@ -53,62 +53,73 @@ const markAttendance = async (imageBuffer, filename, mimetype, organizationId, m
 
     const { start, end } = getTodayRange();
     const alreadyMarked = await AttendanceRecord.findOne({
-      user: user._id,
+      person: person._id,
+      organization: organizationId,
       markedAt: { $gte: start, $lt: end },
     });
 
     if (alreadyMarked) {
-      results.push({ status: "already-marked", name: user.name, userId: user._id, score });
+      results.push({ status: "already-marked", name: person.name, personId: person._id, score });
       continue;
     }
 
     const flagReason = flagged ? `Borderline face match confidence (score: ${score.toFixed(4)})` : null;
 
     await AttendanceRecord.create({
-      user: user._id,
+      person: person._id,
       organization: organizationId,
       matchScore: score,
-      category: user.category || null,
-      memberName: user.name,
-      memberEmail: user.email,
+      category: category || null,
+      memberName: person.name,
+      memberEmail: person.email,
       isFlagged: flagged,
       markedVia,
     });
 
     if (flagged) {
-      const existingUser = await User.findById(user._id).select("flaggedImagePublicId");
-      if (existingUser?.flaggedImagePublicId) {
-        await deleteFlaggedImage(existingUser.flaggedImagePublicId).catch((err) =>
+      const existingMembership = await Membership.findOne({
+        person: person._id,
+        organization: organizationId,
+      }).select("flaggedImagePublicId");
+
+      if (existingMembership?.flaggedImagePublicId) {
+        await deleteFlaggedImage(existingMembership.flaggedImagePublicId).catch((err) =>
           console.error("Failed to delete previous flagged image:", err.message)
         );
       }
 
       let uploadResult = null;
       try {
-        uploadResult = await uploadFlaggedImage(imageBuffer, user._id);
+        uploadResult = await uploadFlaggedImage(imageBuffer, person._id);
       } catch (err) {
         console.error("Failed to upload flagged review image:", err.message);
       }
 
-      await User.findByIdAndUpdate(user._id, {
-        isFlagged: true,
-        flagReason,
-        flaggedAt: new Date(),
-        ...(uploadResult && {
-          flaggedImageUrl: uploadResult.url,
-          flaggedImagePublicId: uploadResult.publicId,
-        }),
-      });
+      await Membership.findOneAndUpdate(
+        { person: person._id, organization: organizationId },
+        {
+          isFlagged: true,
+          flagReason,
+          flaggedAt: new Date(),
+          ...(uploadResult && {
+            flaggedImageUrl: uploadResult.url,
+            flaggedImagePublicId: uploadResult.publicId,
+          }),
+        }
+      );
     }
 
-    results.push({ status: flagged ? "flagged" : "marked", name: user.name, userId: user._id, score });
+    results.push({ status: flagged ? "flagged" : "marked", name: person.name, personId: person._id, score });
   }
 
   return { results, skippedCount, totalDetected: sortedFaces.length };
 };
 
-const getAttendanceForUser = async (userId, { page, limit } = {}) => {
-  const query = { user: userId };
+// NOTE: param name kept as "userId" at the call site's discretion is fine —
+// semantically this is now a Person._id, which is stable across the
+// User -> Person migration, so attendance.controller.js needs no changes.
+const getAttendanceForUser = async (personId, { page, limit } = {}) => {
+  const query = { person: personId };
 
   if (!page && !limit) {
     return AttendanceRecord.find(query).sort({ markedAt: -1 });
@@ -136,7 +147,7 @@ const getAttendanceForOrganization = async (organizationId, { from, to, category
   if (category) query.category = category;
 
   if (!page && !limit) {
-    return AttendanceRecord.find(query).populate("user", "name email").sort({ markedAt: -1 });
+    return AttendanceRecord.find(query).populate("person", "name email").sort({ markedAt: -1 });
   }
 
   const pageNum = Math.max(1, parseInt(page) || 1);
@@ -144,7 +155,7 @@ const getAttendanceForOrganization = async (organizationId, { from, to, category
   const skip = (pageNum - 1) * limitNum;
 
   const [records, totalRecords] = await Promise.all([
-    AttendanceRecord.find(query).populate("user", "name email").sort({ markedAt: -1 }).skip(skip).limit(limitNum),
+    AttendanceRecord.find(query).populate("person", "name email").sort({ markedAt: -1 }).skip(skip).limit(limitNum),
     AttendanceRecord.countDocuments(query),
   ]);
 

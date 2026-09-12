@@ -59,8 +59,8 @@ const exportOrganizationAttendance = asyncHandler(async (req, res) => {
   const header = ["Name", "Email", "Category", "Marked At", "Match Score"].join(",");
   const rows = records.map((r) =>
     [
-      escapeCsv(r.user?.name),
-      escapeCsv(r.user?.email),
+      escapeCsv(r.person?.name),
+      escapeCsv(r.person?.email),
       escapeCsv(r.category),
       escapeCsv(new Date(r.markedAt).toISOString()),
       escapeCsv(r.matchScore.toFixed(4)),

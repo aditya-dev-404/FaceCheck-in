@@ -12,7 +12,7 @@ const cookieOptions = {
 const register = asyncHandler(async (req, res) => {
   const { name, email, password, organizationName, organizationCode, categories } = req.body;
 
-  const { user, accessToken, refreshToken } = await authService.registerAdmin({
+  const { person, membership, accessToken, refreshToken } = await authService.registerAdmin({
     name,
     email,
     password,
@@ -21,7 +21,13 @@ const register = asyncHandler(async (req, res) => {
     categories,
   });
 
-  const safeUser = { _id: user._id, name: user.name, email: user.email, role: user.role };
+  const safeUser = {
+    _id: person._id,
+    name: person.name,
+    email: person.email,
+    role: membership.role,
+    organization: membership.organization,
+  };
 
   res
     .status(201)
@@ -33,9 +39,18 @@ const register = asyncHandler(async (req, res) => {
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const { user, accessToken, refreshToken } = await authService.loginUser({ email, password });
+  const { person, membership, accessToken, refreshToken } = await authService.loginUser({
+    email,
+    password,
+  });
 
-  const safeUser = { _id: user._id, name: user.name, email: user.email, role: user.role };
+  const safeUser = {
+    _id: person._id,
+    name: person.name,
+    email: person.email,
+    role: membership.role,
+    organization: membership.organization,
+  };
 
   res
     .status(200)
@@ -85,5 +100,11 @@ const resetPassword = asyncHandler(async (req, res) => {
 
   res.status(200).json(new ApiResponse(200, {}, "Password reset successfully. Please log in"));
 });
+const setInitialPassword = asyncHandler(async (req, res) => {
+  const { token, password } = req.body;
+  await authService.setInitialPassword(token, password);
 
-export { register, login, refresh, logout, forgotPassword, resetPassword };
+  res.status(200).json(new ApiResponse(200, {}, "Password set successfully. Please log in"));
+});
+
+export { register, login, refresh, logout, forgotPassword, resetPassword, setInitialPassword };

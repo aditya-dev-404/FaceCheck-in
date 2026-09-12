@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { MdEmail, MdLock, MdLogin } from "react-icons/md";
+import { MdVisibility, MdVisibilityOff } from "react-icons/md";
 import useAuth from "../hooks/useAuth";
 
 const Login = () => {
@@ -8,6 +9,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -46,7 +48,15 @@ const Login = () => {
             Password
             <span className="relative mt-1 block">
               <MdLock aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" />
-              <input type="password" placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} required className="clay-input pl-10" />
+              <input type={showPassword ? "text" : "password"} placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} required className="clay-input pl-10 pr-10" />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-text-muted"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <MdVisibilityOff aria-hidden="true" /> : <MdVisibility aria-hidden="true" />}
+              </button>
             </span>
           </label>
           {error && <p className="text-sm text-danger">{error}</p>}

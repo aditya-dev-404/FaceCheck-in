@@ -1,7 +1,3 @@
-/**
- * Route definitions. Login is public; everything else sits behind
- * ProtectedRoute, which redirects to /login if there's no active session.
- */
 import { Routes, Route, Navigate } from "react-router-dom";
 
 import Login from "./pages/Login";
@@ -19,19 +15,28 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import PublicLayout from "./components/PublicLayout";
 import PublicRoute from "./components/PublicRoute";
+import SetPassword from "./pages/SetPassword";
 
 function App() {
   return (
     <Routes>
       <Route element={<PublicLayout />}>
+        {/* Accessible to both guests and logged-in users */}
         <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-        <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password/:token" element={<ResetPassword />} />
+
+        {/* Accessible ONLY to unauthenticated guests */}
+        <Route element={<PublicRoute />}>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route path="/set-password/:token" element={<SetPassword />} />
+        </Route>
       </Route>
+
       <Route path="/kiosk" element={<Kiosk />} />
 
+      {/* Accessible ONLY to logged-in users */}
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/enroll" element={<Enroll />} />

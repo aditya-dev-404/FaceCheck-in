@@ -27,7 +27,15 @@ const updateMyOrganization = asyncHandler(async (req, res) => {
   const update = {};
   if (name) update.name = name;
   if (code) update.code = code;
-  if (Array.isArray(categories)) update.categories = categories;
+
+  if (Array.isArray(categories) && categories.length > 0) {
+    const RESERVED_CATEGORIES = ["admin"];
+    const hasReserved = categories.some((c) => RESERVED_CATEGORIES.includes(c.trim().toLowerCase()));
+    if (hasReserved) {
+      throw new ApiError(400, `"Admin" is a reserved category name and cannot be used`);
+    }
+    update.categories = categories;
+  }
 
   if (update.code) {
     const existing = await Organization.findOne({

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { MdBusiness, MdEmail, MdLock, MdPerson, MdPersonAdd } from "react-icons/md";
 import useAuth from "../hooks/useAuth";
+import { MdVisibility, MdVisibilityOff } from "react-icons/md";
 
 /**
  * This is admin-only self-signup: creates a brand-new Organization plus
@@ -17,6 +18,7 @@ const Register = () => {
   const [categoriesInput, setCategoriesInput] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -51,11 +53,14 @@ const Register = () => {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm font-medium text-text">Organization name<span className="relative mt-1 block"><MdBusiness aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" /><input type="text" placeholder="Acme Inc." value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} required className="clay-input pl-10" /></span></label>
-            <label className="block text-sm font-medium text-text">Organization code<input type="text" placeholder="e.g. ACME2026" value={organizationCode} onChange={(e) => setOrganizationCode(e.target.value)} required className="clay-input mt-1" /></label>
+            <label className="block text-sm font-medium text-text">Organization name<span className="relative mt-1 block"><MdBusiness aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" /><input type="text" placeholder="Org Inc." value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} required className="clay-input pl-10" /></span></label>
+            <label className="block text-sm font-medium text-text">Organization code<input type="text" placeholder="e.g. ABC2026" value={organizationCode} onChange={(e) => setOrganizationCode(e.target.value)} required className="clay-input mt-1" /></label>
           </div>
           <label className="block text-sm font-medium text-text">Categories <span className="font-normal text-text-muted">(optional)</span><input type="text" placeholder="Student, Teacher, Staff" value={categoriesInput} onChange={(e) => setCategoriesInput(e.target.value)} className="clay-input mt-1" /><span className="mt-1 block text-xs font-normal text-text-muted">Separate categories with commas. You can edit them later.</span></label>
-          <div className="border-t border-border pt-4"><p className="mb-3 text-sm font-medium text-text">Your admin account</p><div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium text-text">Full name<span className="relative mt-1 block"><MdPerson aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" /><input type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required className="clay-input pl-10" /></span></label><label className="block text-sm font-medium text-text">Email address<span className="relative mt-1 block"><MdEmail aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" /><input type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required className="clay-input pl-10" /></span></label></div><label className="mt-3 block text-sm font-medium text-text">Password<span className="relative mt-1 block"><MdLock aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" /><input type="password" placeholder="Create a password" value={password} onChange={(e) => setPassword(e.target.value)} required className="clay-input pl-10" /></span></label></div>
+          <div className="border-t border-border pt-4"><p className="mb-3 text-sm font-medium text-text">Your admin account</p><div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-text">Full name<span className="relative mt-1 block"><MdPerson aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" /><input type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required className="clay-input pl-10" /></span></label>
+            <label className="block text-sm font-medium text-text">Email address<span className="relative mt-1 block"><MdEmail aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" /><input type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required className="clay-input pl-10" /></span></label></div>
+            <label className="mt-3 block text-sm font-medium text-text">Password<span className="relative mt-1 block"><MdLock aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" /><input type={showPassword ? "text" : "password"} placeholder="Create a password" value={password} onChange={(e) => setPassword(e.target.value)} required className="clay-input pl-10 pr-10" /><button type="button" onClick={() => setShowPassword((prev) => !prev)} className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-text-muted" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <MdVisibilityOff aria-hidden="true" /> : <MdVisibility aria-hidden="true" />}</button></span></label></div>
           {error && <p className="text-sm text-danger">{error}</p>}
           <button type="submit" disabled={submitting} className="clay-btn-primary w-full"><MdPersonAdd aria-hidden="true" />{submitting ? "Creating..." : "Create organization"}</button>
         </form>

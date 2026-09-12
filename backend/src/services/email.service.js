@@ -48,22 +48,43 @@ const sendPasswordResetEmail = async (to, resetUrl) => {
   });
 };
 
-const sendMemberWelcomeEmail = async (to, name, password, loginUrl) => {
+/**
+ * Sent when an admin adds an EXISTING person (already has a FaceCheck-in
+ * account elsewhere) to their organization. No password is included since
+ * the person already has one — they just need to log in with their
+ * existing credentials and accept the pending invite to activate it.
+ */
+const sendMemberInviteEmail = async (to, name, organizationName, loginUrl) => {
   await sendEmail({
     to,
-    subject: "Your FaceCheck-in account is ready",
+    subject: `You've been invited to join ${organizationName} on FaceCheck-in`,
     htmlContent: emailWrapper(`
       <p style="color:#1E2B22; font-size:15px;">Hi ${name},</p>
-      <p style="color:#1E2B22; font-size:15px;">An admin has created a FaceCheck-in account for you. Here are your login details:</p>
-      <div style="background-color:#E3ECE1; border-radius:12px; padding:16px; margin:16px 0; color:#1E2B22; font-size:14px;">
-        <p style="margin:4px 0;"><strong>Email:</strong> ${to}</p>
-        <p style="margin:4px 0;"><strong>Password:</strong> ${password}</p>
-      </div>
+      <p style="color:#1E2B22; font-size:15px;">An admin has added you as a member of <strong>${organizationName}</strong> on FaceCheck-in.</p>
+      <p style="color:#1E2B22; font-size:15px;">Log in with your existing FaceCheck-in account and accept the invite to start marking attendance there — no need to enroll your face again.</p>
       ${emailButton(loginUrl, "Log In")}
-      <p style="color:#5B6C60; font-size:13px;">After logging in, please enroll your face from your account to start marking attendance. We recommend changing your password after your first login.</p>
+      <p style="color:#5B6C60; font-size:13px;">If you weren't expecting this, you can safely ignore this email — the invite won't take effect until you accept it.</p>
     `),
   });
 };
 
-
-export { sendEmail, sendPasswordResetEmail, sendMemberWelcomeEmail };
+/**
+ * Sent when an admin adds a brand-new person to their organization. No
+ * password is created up front — this email lets them set their own on
+ * first login, via a one-time token link (see setInitialPassword in
+ * auth.service.js).
+ */
+const sendSetPasswordEmail = async (to, name, setPasswordUrl) => {
+  await sendEmail({
+    to,
+    subject: "Set up your FaceCheck-in account",
+    htmlContent: emailWrapper(`
+      <p style="color:#1E2B22; font-size:15px;">Hi ${name},</p>
+      <p style="color:#1E2B22; font-size:15px;">An admin has created a FaceCheck-in account for you at <strong>${to}</strong>.</p>
+      <p style="color:#1E2B22; font-size:15px;">Set your password to get started:</p>
+      ${emailButton(setPasswordUrl, "Set Password")}
+      <p style="color:#5B6C60; font-size:13px;">This link expires in 24 hours. After setting your password and logging in, please enroll your face to start marking attendance.</p>
+    `),
+  });
+};
+export { sendEmail, sendPasswordResetEmail, sendSetPasswordEmail, sendMemberInviteEmail };

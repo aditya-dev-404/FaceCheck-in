@@ -74,12 +74,14 @@ uvicorn main:app --reload --port 8000
 ```bash
 cd backend
 npm install
-cp .env.example .env            # fill in the values below
-npm run dev                     # runs on port 8080 by default
+cp .env.example .env            
+npm run dev                     
 ```
 
 `backend/.env`:
 
+
+- add your own env vars as given -
 ```
 PORT=8080
 MONGODB_URI=
@@ -93,7 +95,7 @@ CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.0-flash   # optional, defaults shown
+GEMINI_MODEL=gemini-3.0-flash   # optional, defaults shown
 ```
 
 ### 3. frontend

@@ -10,6 +10,7 @@ import useAuth from "../hooks/useAuth";
 import { MdDownload, MdGroup, MdHowToReg, MdPersonAdd, MdSettings, MdChevronLeft, MdChevronRight, MdVerifiedUser, MdInsertChartOutlined, MdListAlt, MdMailOutline } from "react-icons/md";
 import AdminAnalytics from "../components/analytics/AdminAnalytics";
 import MemberAnalytics from "../components/analytics/MemberAnalytics";
+import Loader from "../components/common/Loader";
 
 
 const Dashboard = () => {
@@ -260,7 +261,7 @@ const Dashboard = () => {
             )}
           </div>
           {loading ? (
-            <p className="text-sm text-text-muted">Loading...</p>
+            <Loader size="lg" label="Loading..." className="py-12" />
           ) : records.length === 0 ? (
             <p className="clay-notice">No attendance records yet.</p>
           ) : (

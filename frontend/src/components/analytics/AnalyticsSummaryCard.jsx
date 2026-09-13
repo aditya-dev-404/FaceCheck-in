@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import axiosInstance from "../../api/axiosInstance";
 import ExpandableSummaryCard from "./ExpandableSummaryCard";
+import Loader from "../common/Loader";
 
 const SECTION_TITLES = {
   overview: "Overview",
@@ -50,7 +51,7 @@ function AnalyticsSummaryCard({ dateRange }) {
   }, [dateRange?.from, dateRange?.to]);
 
   if (loading) {
-    return <p className="clay-notice animate-pulse">Generating insights...</p>;
+    return <Loader size="md" label="Generating insights..." className="py-6" />;
   }
 
   if (error) {

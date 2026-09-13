@@ -8,6 +8,7 @@ import { useTheme } from "../../hooks/useTheme";
 import { getChartColors } from "../../lib/chartTheme";
 import AnalyticsSummaryCard from "./AnalyticsSummaryCard";
 import DateRangeFilter from "./DateRangeFilter";
+import Loader from "../common/Loader";
 
 export default function AdminAnalytics() {
   const { theme } = useTheme();
@@ -31,7 +32,7 @@ export default function AdminAnalytics() {
       <DateRangeFilter onChange={setDateRange} />
 
       {!data ? (
-        <p className="text-sm text-text-muted">Loading analytics...</p>
+        <Loader size="lg" label="Loading analytics..." className="py-12" />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -222,5 +223,3 @@ function Modal({ title, children, onClose }) {
     </div>
   );
 }
-
-

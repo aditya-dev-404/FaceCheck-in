@@ -191,7 +191,19 @@ const acceptInvite = asyncHandler(async (req, res) => {
  *    accepts it via acceptInvite above.
  */
 const addMember = asyncHandler(async (req, res) => {
-  const { name, email, category } = req.body;
+  const { name, email, category, checkInTime, gracePeriodMinutes } = req.body;
+
+  if (checkInTime !== undefined && checkInTime !== null && checkInTime !== "") {
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(checkInTime)) {
+      throw new ApiError(400, "checkInTime must be in HH:mm 24-hour format");
+    }
+  }
+  if (gracePeriodMinutes !== undefined) {
+    const grace = Number(gracePeriodMinutes);
+    if (Number.isNaN(grace) || grace < 0) {
+      throw new ApiError(400, "gracePeriodMinutes must be a non-negative number");
+    }
+  }
 
   const organization = await Organization.findById(req.user.organization);
   if (category && !organization.categories.includes(category)) {
@@ -218,6 +230,8 @@ const addMember = asyncHandler(async (req, res) => {
       role: "member",
       category: category || null,
       status: "pending",
+      checkInTime: checkInTime || null,
+      gracePeriodMinutes: gracePeriodMinutes !== undefined ? Number(gracePeriodMinutes) : 10,
     });
 
     await sendMemberInviteEmail(
@@ -259,6 +273,8 @@ const addMember = asyncHandler(async (req, res) => {
     role: "member",
     category: category || null,
     status: "active",
+    checkInTime: checkInTime || null,
+    gracePeriodMinutes: gracePeriodMinutes !== undefined ? Number(gracePeriodMinutes) : 10,
   });
 
   await sendSetPasswordEmail(email, name, `${env.CLIENT_URL}/set-password/${rawToken}`);

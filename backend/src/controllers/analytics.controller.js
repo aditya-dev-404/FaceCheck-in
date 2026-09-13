@@ -1,7 +1,7 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { getOrganizationAnalytics, getMemberAnalytics } from "../services/analytics.service.js";
-import { generateAnalyticsSummary } from "../services/gemini.service.js";
+import { generateAnalyticsSections } from "../services/gemini.service.js";
 
 export const getOrganizationAnalyticsHandler = asyncHandler(async (req, res) => {
   const data = await getOrganizationAnalytics(req.user.organization, req.query);
@@ -13,9 +13,8 @@ export const getMemberAnalyticsHandler = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, data, "Member analytics fetched"));
 });
 
-
 export const getAnalyticsSummary = asyncHandler(async (req, res) => {
   const analyticsData = await getOrganizationAnalytics(req.user.organization, req.query);
-  const summary = await generateAnalyticsSummary(analyticsData);
-  res.status(200).json(new ApiResponse(200, { summary }, "Summary generated"));
+  const sections = await generateAnalyticsSections(analyticsData);
+  res.status(200).json(new ApiResponse(200, { sections }, "Summary generated"));
 });

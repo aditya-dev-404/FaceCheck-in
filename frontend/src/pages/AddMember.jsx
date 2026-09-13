@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
-import { MdEmail, MdPersonAdd } from "react-icons/md";
+import { MdEmail, MdPersonAdd, MdSchedule } from "react-icons/md";
 
 /**
  * Admin-only: adds a member to the org. No password is collected here —
  * a new person gets a "set your password" email; an existing person gets
- * an invite email to accept using their existing account.
+ * an invite email to accept using their existing account. Check-in time
+ * and grace period (for late-entry tracking) are assigned here up front.
  */
 const AddMember = () => {
   const { user } = useAuth();
@@ -15,6 +16,8 @@ const AddMember = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [category, setCategory] = useState("");
+  const [checkInTime, setCheckInTime] = useState("");
+  const [gracePeriodMinutes, setGracePeriodMinutes] = useState(10);
   const [categories, setCategories] = useState([]);
   const [status, setStatus] = useState(""); // "", "submitting", "success", "error"
   const [message, setMessage] = useState("");
@@ -41,12 +44,20 @@ const AddMember = () => {
     setStatus("submitting");
     setMessage("");
     try {
-      const { data } = await axiosInstance.post("/users", { name, email, category });
+      const { data } = await axiosInstance.post("/users", {
+        name,
+        email,
+        category,
+        checkInTime: checkInTime || null,
+        gracePeriodMinutes,
+      });
       setStatus("success");
       setMessage(data.message);
       setName("");
       setEmail("");
       setCategory("");
+      setCheckInTime("");
+      setGracePeriodMinutes(10);
     } catch (err) {
       setStatus("error");
       setMessage(err.response?.data?.message || "Could not add member");
@@ -76,6 +87,33 @@ const AddMember = () => {
             ))}
           </select>
         )}
+        <div className="border-t border-border pt-4">
+          <p className="mb-3 flex items-center gap-2 text-sm font-medium text-text">
+            <MdSchedule aria-hidden="true" className="text-lg text-primary" /> Check-in time {/*<span className="font-normal text-text-muted">(optional)</span>*/}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-text">
+              Check-in time
+              <input
+                type="time"
+                value={checkInTime}
+                onChange={(e) => setCheckInTime(e.target.value)}
+                className="clay-input mt-1 w-full cursor-pointer [color-scheme:light]"
+              />
+            </label>
+            <label className="block text-sm font-medium text-text">
+              Grace period (minutes)
+              <input
+                type="number"
+                min="0"
+                value={gracePeriodMinutes}
+                onChange={(e) => setGracePeriodMinutes(e.target.value)}
+                className="clay-input mt-1"
+              />
+            </label>
+          </div>
+          <p className="mt-1 text-xs text-text-muted">Leave check-in time blank to skip late-entry tracking for this member. You can set it later from Manage Members.</p>
+        </div>
         <button type="submit" disabled={status === "submitting"} className="clay-btn-primary w-full">
           <MdPersonAdd aria-hidden="true" /> {status === "submitting" ? "Adding..." : "Add member"}
         </button>

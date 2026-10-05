@@ -12,13 +12,12 @@ import { sendPasswordResetEmail } from "./email.service.js";
 const ACCESS_TOKEN_EXPIRY = "15m";
 const REFRESH_TOKEN_EXPIRY = "7d";
 
-// NOTE: assumes at most one ACTIVE Membership per Person is what login
-// resolves to (true for every account today). A Person can now also have
-// separate "pending" Memberships awaiting invite acceptance — those are
-// explicitly excluded below so logging in never grants access to an org
-// that hasn't been accepted yet. Once org-switching UI exists for people
-// with multiple ACTIVE memberships, login will need to accept/return a
-// choice of organization instead of always taking findOne's result.
+// NOTE: a Person can hold several ACTIVE Memberships (one per org). Login
+// resolves to the org they last used (Person.lastActiveOrganization),
+// falling back to the first usable one; they can change org afterwards via
+// switchOrganization below. "pending" Memberships (unaccepted invites) are
+// always excluded so logging in never grants access to an org that hasn't
+// been accepted yet.
 
 const generateAccessToken = (person, membership) => {
   return jwt.sign(
@@ -45,13 +44,15 @@ const generateRefreshToken = (person, membership) => {
 /**
  * Issues a fresh access+refresh pair for a person and persists the refresh
  * token on the Person document (rotate-on-refresh: the old one is invalid
- * the moment a new one is issued).
+ * the moment a new one is issued). Also records the org as the person's
+ * last-used one, so every login/register/switch/refresh keeps it current.
  */
 const generateTokens = async (person, membership) => {
   const accessToken = generateAccessToken(person, membership);
   const refreshToken = generateRefreshToken(person, membership);
 
   person.refreshToken = refreshToken;
+  person.lastActiveOrganization = membership.organization;
   await person.save({ validateBeforeSave: false });
 
   return { accessToken, refreshToken };
@@ -128,21 +129,27 @@ const loginUser = async ({ email, password }) => {
   }
 
   const isPasswordValid = await bcrypt.compare(password, person.password);
-  // ...unchanged from here
   if (!isPasswordValid) {
     throw new ApiError(401, "Invalid email or password");
   }
 
-  // status: "active" filter is deliberate — see NOTE at top of file. A
-  // pending invite must never be usable to log into that org.
-  const membership = await Membership.findOne({ person: person._id, status: "active" });
-  if (!membership) {
+  // status: "active" filter is deliberate — a pending invite must never be
+  // usable to log into that org.
+  const memberships = await Membership.find({ person: person._id, status: "active" });
+  if (memberships.length === 0) {
     throw new ApiError(403, "This account is not linked to any organization");
   }
 
-  if (!membership.isActive) {
+  // Deactivated memberships can't be logged into — skip them when choosing.
+  const usable = memberships.filter((m) => m.isActive);
+  if (usable.length === 0) {
     throw new ApiError(403, "This account has been deactivated. Contact your organization admin.");
   }
+
+  // Prefer the org they last used; otherwise just the first usable one.
+  const lastOrgId = person.lastActiveOrganization?.toString();
+  const membership =
+    usable.find((m) => m.organization.toString() === lastOrgId) || usable[0];
 
   const { accessToken, refreshToken } = await generateTokens(person, membership);
 
@@ -180,6 +187,63 @@ const refreshAccessToken = async (incomingRefreshToken) => {
 
 const logoutUser = async (personId) => {
   await Person.findByIdAndUpdate(personId, { $set: { refreshToken: null } });
+};
+
+/**
+ * Lists the person's ACTIVE memberships (one per org) for the org switcher
+ * and the My Organizations page. Deactivated ones are still returned (with
+ * isActive:false) so the UI can show them greyed out; switching into them
+ * is blocked in switchOrganization. Pending invites are not included.
+ */
+const listMyOrganizations = async (personId, currentMembershipId) => {
+  const memberships = await Membership.find({ person: personId, status: "active" })
+    .select("organization role category isActive")
+    .populate("organization", "name logoUrl");
+
+  return memberships
+    .filter((m) => m.organization) // guard against an org that was deleted
+    .map((m) => ({
+      membershipId: m._id,
+      organization: {
+        _id: m.organization._id,
+        name: m.organization.name,
+        logoUrl: m.organization.logoUrl,
+      },
+      role: m.role,
+      category: m.category,
+      isActive: m.isActive,
+      isCurrent: String(m._id) === String(currentMembershipId),
+    }))
+    .sort((a, b) => a.organization.name.localeCompare(b.organization.name));
+};
+
+/**
+ * Moves the session into another org. The membership must belong to this
+ * person, be accepted ("active" status) and not be deactivated. Rotates
+ * both tokens to the new membership, so the old org's access token stops
+ * being the one in the cookie.
+ */
+const switchOrganization = async (personId, membershipId) => {
+  const membership = await Membership.findOne({
+    _id: membershipId,
+    person: personId,
+    status: "active",
+  });
+  if (!membership) {
+    throw new ApiError(404, "Organization membership not found");
+  }
+  if (!membership.isActive) {
+    throw new ApiError(403, "Your account in this organization has been deactivated.");
+  }
+
+  const person = await Person.findById(personId);
+  if (!person) {
+    throw new ApiError(404, "Account not found");
+  }
+
+  const { accessToken, refreshToken } = await generateTokens(person, membership);
+
+  return { person, membership, accessToken, refreshToken };
 };
 
 const RESET_TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
@@ -254,6 +318,8 @@ export {
   loginUser,
   refreshAccessToken,
   logoutUser,
+  listMyOrganizations,
+  switchOrganization,
   forgotPassword,
   resetPassword,
   setInitialPassword,

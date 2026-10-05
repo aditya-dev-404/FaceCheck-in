@@ -1,11 +1,41 @@
 import { useState, useEffect, useRef } from "react";
-import { Navigate, Link } from "react-router-dom";
+import { Navigate, Link, useNavigate } from "react-router-dom";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
-import { MdAdd, MdCancel, MdCheck, MdDeleteOutline, MdEdit, MdFlag, MdGroup, MdMoreVert, MdPersonOff, MdPersonOutline } from "react-icons/md";
+import {
+  MdAccessTime,
+  MdAdd,
+  MdCancel,
+  MdCheck,
+  MdCheckCircle,
+  MdDeleteOutline,
+  MdEdit,
+  MdFlag,
+  MdGroup,
+  MdHowToReg,
+  MdMoreVert,
+  MdPersonOff,
+  MdPersonOutline,
+  MdPendingActions,
+} from "react-icons/md";
+
+const SummaryTile = ({ icon: Icon, label, value, tone = "text-primary" }) => (
+  <div className="flex items-center gap-3 rounded-clay bg-surface p-4 shadow-clay-sm">
+    <span
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-clay-sm bg-surface-raised text-xl shadow-clay-inset ${tone}`}
+    >
+      <Icon aria-hidden="true" />
+    </span>
+    <div>
+      <p className="text-2xl font-semibold leading-none text-text">{value}</p>
+      <p className="mt-1 text-xs text-text-muted">{label}</p>
+    </div>
+  </div>
+);
 
 const ManageMembers = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [members, setMembers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -113,62 +143,88 @@ const ManageMembers = () => {
 
   if (loading) return <p className="clay-page text-sm text-text-muted">Loading members...</p>;
 
+  const activeCount = members.filter((m) => m.isActive).length;
+  const enrolledCount = members.filter((m) => m.isEnrolled).length;
+  const flaggedCount = members.filter((m) => m.isFlagged).length;
+
   return (
-    <div className="clay-page pb-40">
+    <div className="clay-page space-y-6 pb-40">
       <div className="clay-page-header">
         <div>
           <p className="text-sm font-medium text-primary">Team management</p>
           <h1 className="mt-1 text-2xl font-semibold text-text">Manage members</h1>
+          <p className="mt-1 text-xs text-text-muted">Click a member to see their attendance and details</p>
         </div>
         <Link to="/add-member" className="clay-btn-primary">
           <MdAdd aria-hidden="true" /> Add member
         </Link>
       </div>
 
+      {/* Summary */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <SummaryTile icon={MdGroup} label="Total members" value={members.length} />
+        <SummaryTile icon={MdCheckCircle} label="Active" value={activeCount} tone="text-success" />
+        <SummaryTile icon={MdHowToReg} label="Face enrolled" value={enrolledCount} />
+        <SummaryTile
+          icon={MdFlag}
+          label="Flagged for review"
+          value={flaggedCount}
+          tone={flaggedCount ? "text-danger" : "text-text-muted"}
+        />
+      </div>
+
       <div className="rounded-clay bg-surface shadow-clay-sm">
-        <div className="overflow-x-auto min-h-[300px] rounded-clay">
-          <table className="min-w-full divide-y divide-border text-sm">
+        <div className="min-h-[300px] overflow-x-auto rounded-clay">
+          <table className="min-w-full text-sm">
             <thead className="bg-surface-raised text-left text-xs font-medium uppercase tracking-wide text-text-muted">
               <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Email</th>
+                <th className="px-5 py-3">Member</th>
                 <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Check-in</th>
-                <th className="px-4 py-3">Enrolled</th>
+                <th className="px-4 py-3">Enrollment</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 w-12 text-right">Actions</th>
+                <th className="w-12 px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {members.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-text-muted">
-                    <MdGroup aria-hidden="true" className="mx-auto mb-2 text-3xl text-primary" />
-                    No members yet.
+                  <td colSpan={6} className="px-4 py-14 text-center text-text-muted">
+                    <MdGroup aria-hidden="true" className="mx-auto mb-2 text-4xl text-primary" />
+                    <p className="font-medium text-text">No members yet</p>
+                    <p className="mt-1 text-xs">Add your first member to start tracking attendance.</p>
                   </td>
                 </tr>
               ) : (
                 members.map((member) => (
-                  <tr key={member._id} className={!member.isActive || member.isFlagged ? "bg-surface-raised" : ""}>
+                  <tr
+                    key={member._id}
+                    className={`transition ${!member.isActive ? "opacity-70" : ""} ${
+                      editingId === member._id ? "bg-surface-raised" : "cursor-pointer hover:bg-surface-raised"
+                    }`}
+                    onClick={editingId === member._id ? undefined : () => navigate(`/manage-members/${member._id}`)}
+                  >
                     {editingId === member._id ? (
                       <>
-                        <td className="px-4 py-2">
-                          <input
-                            type="text"
-                            value={editForm.name}
-                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                            className="clay-input py-1"
-                          />
+                        <td className="px-5 py-3">
+                          <div className="flex flex-col gap-1.5">
+                            <input
+                              type="text"
+                              value={editForm.name}
+                              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                              className="clay-input py-1"
+                              placeholder="Name"
+                            />
+                            <input
+                              type="email"
+                              value={editForm.email}
+                              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                              className="clay-input py-1"
+                              placeholder="Email"
+                            />
+                          </div>
                         </td>
-                        <td className="px-4 py-2">
-                          <input
-                            type="email"
-                            value={editForm.email}
-                            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                            className="clay-input py-1"
-                          />
-                        </td>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-3">
                           <select
                             value={editForm.category}
                             onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
@@ -182,8 +238,8 @@ const ManageMembers = () => {
                             ))}
                           </select>
                         </td>
-                        <td className="px-4 py-2">
-                          <div className="flex flex-col gap-1">
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1.5">
                             <input
                               type="time"
                               value={editForm.checkInTime}
@@ -200,14 +256,15 @@ const ManageMembers = () => {
                             />
                           </div>
                         </td>
-                        <td className="px-4 py-2 text-text-muted">—</td>
-                        <td className="px-4 py-2 text-text-muted">—</td>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-3 text-text-muted">—</td>
+                        <td className="px-4 py-3 text-text-muted">—</td>
+                        <td className="px-4 py-3">
                           <div className="flex justify-end gap-2">
                             <button
                               type="button"
                               onClick={() => saveEdit(member._id)}
                               className="clay-btn-primary px-2.5 py-1.5 text-xs"
+                              aria-label="Save"
                             >
                               <MdCheck aria-hidden="true" />
                             </button>
@@ -215,6 +272,7 @@ const ManageMembers = () => {
                               type="button"
                               onClick={cancelEdit}
                               className="clay-action px-2.5 py-1.5 text-xs"
+                              aria-label="Cancel"
                             >
                               <MdCancel aria-hidden="true" />
                             </button>
@@ -223,44 +281,85 @@ const ManageMembers = () => {
                       </>
                     ) : (
                       <>
-                        <td className="px-4 py-3 font-medium text-text">
-                          {member.name}
-                          {member.isFlagged && (
-                            <button
-                              type="button"
-                              onClick={() => setViewingMember(member)}
-                              className="ml-2 inline-flex items-center gap-1 rounded-full bg-surface-raised px-2 py-0.5 text-xs font-medium text-danger shadow-clay-sm"
-                              title={member.flagReason || "Flagged for review"}
-                            >
-                              <MdFlag aria-hidden="true" /> Flagged
-                            </button>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-sm font-semibold text-primary shadow-clay-inset">
+                              {member.name?.charAt(0).toUpperCase()}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="flex flex-wrap items-center gap-2 font-medium text-text">
+                                {member.name}
+                                {member.isFlagged && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setViewingMember(member);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-2 py-0.5 text-xs font-medium text-danger shadow-clay-sm"
+                                    title={member.flagReason || "Flagged for review"}
+                                  >
+                                    <MdFlag aria-hidden="true" /> Flagged
+                                  </button>
+                                )}
+                              </p>
+                              <p className="truncate text-xs text-text-muted">{member.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {member.category ? (
+                            <span className="rounded-full bg-surface-raised px-2.5 py-0.5 text-xs font-medium text-text shadow-clay-sm">
+                              {member.category}
+                            </span>
+                          ) : (
+                            <span className="text-text-muted">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-text-muted">{member.email}</td>
-                        <td className="px-4 py-3 text-text-muted">{member.category || "—"}</td>
-                        <td className="px-4 py-3 text-text-muted">{member.checkInTime || "—"}</td>
-                        <td className="px-4 py-2">
-                          <span className={`clay-badge ${member.isEnrolled ? "text-success" : ""}`}>
+                        <td className="px-4 py-3 text-text-muted">
+                          {member.checkInTime ? (
+                            <span className="inline-flex items-center gap-1">
+                              <MdAccessTime aria-hidden="true" className="text-base text-primary" />
+                              {member.checkInTime}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full bg-surface-raised px-2.5 py-0.5 text-xs font-medium shadow-clay-sm ${
+                              member.isEnrolled ? "text-success" : "text-text-muted"
+                            }`}
+                          >
+                            {member.isEnrolled ? (
+                              <MdCheckCircle aria-hidden="true" />
+                            ) : (
+                              <MdPendingActions aria-hidden="true" />
+                            )}
                             {member.isEnrolled ? "Enrolled" : "Pending"}
                           </span>
                         </td>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-3">
                           <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                              member.isActive ? "bg-surface-raised text-success shadow-clay-sm" : "bg-surface-raised text-text-muted shadow-clay-sm"
+                            className={`inline-flex items-center gap-1.5 rounded-full bg-surface-raised px-2.5 py-0.5 text-xs font-medium shadow-clay-sm ${
+                              member.isActive ? "text-success" : "text-text-muted"
                             }`}
                           >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${member.isActive ? "bg-success" : "bg-text-muted"}`}
+                            />
                             {member.isActive ? "Active" : "Deactivated"}
                           </span>
                         </td>
-                        <td className="relative px-4 py-2 text-right">
+                        <td className="relative px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setOpenMenuId(openMenuId === member._id ? null : member._id);
                             }}
-                            className="clay-action rounded-full p-1.5 inline-flex items-center justify-center"
+                            className="clay-action inline-flex items-center justify-center rounded-full p-1.5"
                             aria-label="Actions"
                           >
                             <MdMoreVert aria-hidden="true" className="text-lg" />
@@ -268,7 +367,7 @@ const ManageMembers = () => {
                           {openMenuId === member._id && (
                             <div
                               ref={menuRef}
-                              className="absolute right-4 top-12 z-50 w-40 rounded-clay-sm bg-surface py-1 text-left shadow-lg ring-1 ring-black/10 border border-border"
+                              className="absolute right-4 top-12 z-50 w-40 rounded-clay-sm border border-border bg-surface py-1 text-left shadow-lg ring-1 ring-black/10"
                             >
                               <button
                                 type="button"
@@ -314,7 +413,7 @@ const ManageMembers = () => {
         </div>
       </div>
 
-      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       {viewingMember && (
         <div

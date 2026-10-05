@@ -9,6 +9,7 @@ import Enroll from "./pages/Enroll";
 import Attendance from "./pages/Attendance";
 import AddMember from "./pages/AddMember";
 import ManageMembers from "./pages/ManageMembers";
+import MemberDetail from "./pages/MemberDetail";
 import ManageOrganization from "./pages/ManageOrganization";
 import Kiosk from "./pages/Kiosk";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -43,6 +44,7 @@ function App() {
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/add-member" element={<AddMember />} />
         <Route path="/manage-members" element={<ManageMembers />} />
+        <Route path="/manage-members/:id" element={<MemberDetail />} />
         <Route path="/manage-organization" element={<ManageOrganization />} />
       </Route>
 

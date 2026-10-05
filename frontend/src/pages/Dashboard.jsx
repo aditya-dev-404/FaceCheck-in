@@ -7,11 +7,51 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
-import { MdDownload, MdGroup, MdHowToReg, MdPersonAdd, MdSettings, MdChevronLeft, MdChevronRight, MdVerifiedUser, MdInsertChartOutlined, MdListAlt, MdMailOutline } from "react-icons/md";
+import {
+  MdAccessTime,
+  MdChevronLeft,
+  MdChevronRight,
+  MdDownload,
+  MdGroup,
+  MdHowToReg,
+  MdInsertChartOutlined,
+  MdListAlt,
+  MdMailOutline,
+  MdPersonAdd,
+  MdSettings,
+  MdVerifiedUser,
+} from "react-icons/md";
 import AdminAnalytics from "../components/analytics/AdminAnalytics";
 import MemberAnalytics from "../components/analytics/MemberAnalytics";
 import Loader from "../components/common/Loader";
 
+const greeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+};
+
+const ActionTile = ({ to, icon: Icon, title, description, primary }) => (
+  <Link
+    to={to}
+    className={`group flex items-center gap-4 rounded-clay p-4 transition duration-200 hover:-translate-y-0.5 ${
+      primary ? "bg-primary text-primary-fg shadow-clay" : "bg-surface text-text shadow-clay-sm"
+    }`}
+  >
+    <span
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-clay-sm text-xl ${
+        primary ? "bg-white/20" : "bg-surface-raised text-primary shadow-clay-inset"
+      }`}
+    >
+      <Icon aria-hidden="true" />
+    </span>
+    <span className="min-w-0">
+      <span className="block text-sm font-semibold">{title}</span>
+      <span className={`block text-xs ${primary ? "opacity-80" : "text-text-muted"}`}>{description}</span>
+    </span>
+  </Link>
+);
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -87,7 +127,6 @@ const Dashboard = () => {
     fetchRecords();
   }, [user, categoryFilter, page]);
 
-
   useEffect(() => {
     if (!user || user.role !== "admin") return;
     const fetchCategories = async () => {
@@ -122,15 +161,42 @@ const Dashboard = () => {
     }
   };
 
-  return (
-    <div className="clay-page">
-      <div className="clay-page-header"><div><p className="text-sm font-medium text-primary">{user?.role === "admin" ? "Organization overview" : "Your attendance"}</p><h1 className="mt-1 text-2xl font-semibold text-text">Welcome back, {user?.name}</h1></div><div className="flex h-12 w-12 items-center justify-center rounded-clay-sm bg-surface-raised text-primary shadow-clay-inset"><MdVerifiedUser aria-hidden="true" className="text-2xl" /></div></div>
+  const isAdmin = user?.role === "admin";
+  const today = new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
+  return (
+    <div className="clay-page space-y-6">
+      {/* Hero header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-clay bg-surface p-6 shadow-clay-sm">
+        <div className="flex items-center gap-4">
+          {user?.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" className="h-14 w-14 rounded-full object-cover shadow-clay-sm" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-xl font-semibold text-primary-fg shadow-clay-sm">
+              {user?.name?.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div>
+            <p className="text-sm font-medium text-primary">{isAdmin ? "Organization overview" : "Your attendance"}</p>
+            <h1 className="mt-0.5 text-2xl font-semibold text-text">
+              {greeting()}, {user?.name}
+            </h1>
+            <p className="mt-0.5 text-xs text-text-muted">{today}</p>
+          </div>
+        </div>
+        <div className="hidden h-12 w-12 items-center justify-center rounded-clay-sm bg-surface-raised text-primary shadow-clay-inset sm:flex">
+          <MdVerifiedUser aria-hidden="true" className="text-2xl" />
+        </div>
+      </div>
+
+      {/* Pending invites */}
       {!invitesLoading && invites.length > 0 && (
-        <div className="clay-card space-y-3">
+        <div className="space-y-3 rounded-clay bg-surface p-5 shadow-clay-sm">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-text">
             <MdMailOutline aria-hidden="true" className="text-lg text-primary" />
-            {invites.length === 1 ? "You've been invited to join an organization" : `You've been invited to join ${invites.length} organizations`}
+            {invites.length === 1
+              ? "You've been invited to join an organization"
+              : `You've been invited to join ${invites.length} organizations`}
           </h2>
           {inviteError && <p className="text-sm text-danger">{inviteError}</p>}
           <ul className="space-y-2">
@@ -141,9 +207,9 @@ const Dashboard = () => {
               >
                 <div className="flex items-center gap-3">
                   {invite.organization?.logoUrl ? (
-                    <img src={invite.organization.logoUrl} alt="" className="h-8 w-8 rounded-clay-sm object-cover" />
+                    <img src={invite.organization.logoUrl} alt="" className="h-9 w-9 rounded-clay-sm object-cover" />
                   ) : (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-clay-sm bg-primary text-xs font-semibold text-primary-fg">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-clay-sm bg-primary text-xs font-semibold text-primary-fg">
                       {invite.organization?.name?.[0] || "?"}
                     </div>
                   )}
@@ -166,71 +232,84 @@ const Dashboard = () => {
         </div>
       )}
 
-      <nav className="clay-card flex flex-wrap gap-3 p-4">
+      {/* Quick actions */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {!user?.isEnrolled && (
-          <Link
+          <ActionTile
             to="/enroll"
-            className="clay-btn-primary"
-          >
-            <MdPersonAdd aria-hidden="true" /> Enroll your face
-          </Link>
+            icon={MdPersonAdd}
+            title="Enroll your face"
+            description="Required before attendance can be marked"
+            primary
+          />
         )}
-        {user?.role === "admin" ? (
-          <Link
-            to="/attendance"
-            className="clay-btn-primary"
-          >
-            <MdHowToReg aria-hidden="true" /> Mark attendance
-          </Link>
-        ) : (
-          <span className="clay-notice">
-            Attendance is marked automatically at your organization's kiosk
-          </span>
-        )}
-        {user?.role === "admin" && (
+        {isAdmin ? (
           <>
-            <Link
+            <ActionTile
+              to="/attendance"
+              icon={MdHowToReg}
+              title="Mark attendance"
+              description="Manual entry from a group photo"
+              primary={user?.isEnrolled}
+            />
+            <ActionTile
               to="/manage-members"
-              className="clay-action"
-            >
-              <MdGroup aria-hidden="true" /> Manage members
-            </Link>
-            <Link
+              icon={MdGroup}
+              title="Manage members"
+              description="View, edit and review your team"
+            />
+            <ActionTile
               to="/manage-organization"
-              className="clay-action"
-            >
-              <MdSettings aria-hidden="true" /> Organization
-            </Link>
+              icon={MdSettings}
+              title="Organization"
+              description="Categories, kiosk and settings"
+            />
           </>
+        ) : (
+          <div className="flex items-center gap-4 rounded-clay bg-surface p-4 shadow-clay-sm">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-clay-sm bg-surface-raised text-xl text-primary shadow-clay-inset">
+              <MdHowToReg aria-hidden="true" />
+            </span>
+            <p className="text-sm text-text-muted">Attendance is marked automatically at your organization's kiosk</p>
+          </div>
         )}
-      </nav>
+      </div>
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("attendance")}
-          className={tab === "attendance" ? "clay-btn-primary" : "clay-btn-secondary"}
-        >
-          <MdListAlt aria-hidden="true" /> Attendance
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("analytics")}
-          className={tab === "analytics" ? "clay-btn-primary" : "clay-btn-secondary"}
-        >
-          <MdInsertChartOutlined aria-hidden="true" /> Analytics
-        </button>
+      {/* Segmented tabs */}
+      <div className="inline-flex rounded-clay-sm bg-surface-raised p-1 shadow-clay-inset">
+        {[
+          { key: "attendance", label: "Attendance", icon: MdListAlt },
+          { key: "analytics", label: "Analytics", icon: MdInsertChartOutlined },
+        ].map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-2 rounded-clay-sm px-4 py-2 text-sm font-medium transition ${
+              tab === key ? "bg-primary text-primary-fg shadow-clay-sm" : "text-text-muted hover:text-text"
+            }`}
+          >
+            <Icon aria-hidden="true" /> {label}
+          </button>
+        ))}
       </div>
 
       {tab === "analytics" ? (
-        user?.role === "admin" ? <AdminAnalytics /> : <MemberAnalytics />
+        isAdmin ? (
+          <AdminAnalytics />
+        ) : (
+          <MemberAnalytics />
+        )
       ) : (
-        <div className="clay-card">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-text">
-              {user?.role === "admin" ? "Organization Attendance" : "Your Attendance History"}
-            </h2>
-            {user?.role === "admin" && (
+        <div className="rounded-clay bg-surface p-5 shadow-clay-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-text">
+                {isAdmin ? "Organization attendance" : "Your attendance history"}
+              </h2>
+              <p className="text-xs text-text-muted">Most recent check-ins first</p>
+            </div>
+            {isAdmin && (
               <div className="flex items-center gap-2">
                 {categories.length > 0 && (
                   <select
@@ -260,40 +339,64 @@ const Dashboard = () => {
               </div>
             )}
           </div>
+
           {loading ? (
             <Loader size="lg" label="Loading..." className="py-12" />
           ) : records.length === 0 ? (
             <p className="clay-notice">No attendance records yet.</p>
           ) : (
             <>
-              <ul className="divide-y divide-border">
-                {records.map((record) => (
-                  <li key={record._id} className="flex items-center justify-between gap-3 py-3 text-sm text-text-muted">
-                    <span>
-                      {user?.role === "admin" && (
-                        <span className="font-medium text-text">{record.person?.name || record.memberName} — </span>
-                      )}
-                      {new Date(record.markedAt).toLocaleString()}
-                    </span>
-                    <span className="flex items-center gap-2">
-                      {record.lateBy && (
-                        <span className="rounded-full bg-surface-raised px-2 py-0.5 text-xs font-medium text-danger">
-                          {record.lateBy}
+              <ul className="space-y-2">
+                {records.map((record) => {
+                  const name = record.person?.name || record.memberName;
+                  const date = new Date(record.markedAt);
+                  return (
+                    <li
+                      key={record._id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-clay-sm bg-surface-raised px-4 py-3 shadow-clay-sm"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-sm font-semibold text-primary shadow-clay-inset">
+                          {isAdmin ? (
+                            name?.charAt(0).toUpperCase() || "?"
+                          ) : (
+                            <MdAccessTime aria-hidden="true" className="text-lg" />
+                          )}
                         </span>
-                      )}
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${record.markedVia === "admin" ? "bg-surface-raised text-warning" : "bg-surface-raised text-primary"
+                        <div>
+                          <p className="text-sm font-medium text-text">
+                            {isAdmin
+                              ? name
+                              : date.toLocaleDateString([], { weekday: "long", day: "numeric", month: "short" })}
+                          </p>
+                          <p className="text-xs text-text-muted">
+                            {isAdmin
+                              ? `${date.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })} · ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                              : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {record.lateBy && (
+                          <span className="rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-danger shadow-clay-sm">
+                            {record.lateBy}
+                          </span>
+                        )}
+                        <span
+                          className={`rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium shadow-clay-sm ${
+                            record.markedVia === "admin" ? "text-warning" : "text-primary"
                           }`}
-                      >
-                        {record.markedVia === "admin" ? "Admin Entry" : "Kiosk"}
-                      </span>
-                    </span>
-                  </li>
-                ))}
+                        >
+                          {record.markedVia === "admin" ? "Admin Entry" : "Kiosk"}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
 
               {totalPages > 1 && (
-                <div className="mt-4 flex items-center justify-center gap-4">
+                <div className="mt-5 flex items-center justify-center gap-4">
                   <button
                     type="button"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}

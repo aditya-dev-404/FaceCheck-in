@@ -16,6 +16,12 @@ import {
   unflagMember,
   deleteFlagImage,
 } from "../controllers/user.controller.js";
+import {
+  getMemberDetails,
+  getMemberStats,
+  getMemberAttendance,
+  exportMemberAttendance,
+} from "../controllers/memberDetail.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { requireAdmin } from "../middlewares/role.middleware.js";
 import { imageUpload } from "../middlewares/imageUpload.middleware.js";
@@ -39,6 +45,13 @@ router.patch("/me/invites/:membershipId/accept", acceptInvite);
 // Admin-only member management
 router.get("/", requireAdmin, listMembers);
 router.post("/", requireAdmin, addMember);
+
+// Admin-only member detail view (profile, stats, attendance records, CSV)
+router.get("/:id/details", requireAdmin, getMemberDetails);
+router.get("/:id/analytics", requireAdmin, getMemberStats);
+router.get("/:id/attendance", requireAdmin, getMemberAttendance);
+router.get("/:id/attendance/export", requireAdmin, exportMemberAttendance);
+
 router.patch("/:id", requireAdmin, updateMember);
 router.patch("/:id/deactivate", requireAdmin, setMemberActiveStatus(false));
 router.patch("/:id/activate", requireAdmin, setMemberActiveStatus(true));

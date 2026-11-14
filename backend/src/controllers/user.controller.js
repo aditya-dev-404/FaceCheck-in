@@ -11,20 +11,20 @@ import { sendSetPasswordEmail, sendMemberInviteEmail } from "../services/email.s
 import { env } from "../config/env.js";
 import crypto from "crypto";
 
-// Member-management helpers below are all scoped by (person id from
+// Member-management handlers below are all scoped by (person id from
 // req.params.id) + (req.user.organization) + role:"member", so an admin
 // can never touch another org's people or another admin's Membership.
-// req.params.id is a Person._id — this stayed stable across the
-// User -> Person/Membership migration (Person._id === old User._id), so
-// no frontend changes were needed for these routes.
+// req.params.id is a Person._id.
+//
+// A person has ONE active Membership at a time. Leaving, being removed, or
+// joining another organization turns the old one into a "past" Membership
+// (kept on record) instead of deleting it.
 
-const SET_PASSWORD_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours — longer than the reset-password window since this is a one-time welcome link, not a security-sensitive reset
+const SET_PASSWORD_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours — a one-time welcome link, so longer than the reset-password window
 
 /**
  * Enrollment flow: capture -> detect -> align -> embed -> store.
- * The detect/align/embed steps happen inside the ML service; here we just
- * forward the image, validate exactly one face was found, and store the
- * resulting embedding against the logged-in person's active membership.
+ * The embedding is stored against the logged-in person's active organization.
  */
 const enrollFace = asyncHandler(async (req, res) => {
   if (!req.file) {
@@ -55,33 +55,35 @@ const enrollFace = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, {}, "Face enrolled successfully"));
 });
 
+/**
+ * Works for a person with no active organization too (organization is
+ * then null) so the frontend can show the "no organization" screen.
+ */
 const getProfile = asyncHandler(async (req, res) => {
   const person = await Person.findById(req.user._id).select("-password -refreshToken");
 
-  const membership = await Membership.findById(req.user.membershipId).populate(
-    "organization",
-    "name logoUrl"
-  );
+  const membership = req.membership
+    ? await Membership.findById(req.membership._id).populate("organization", "name logoUrl")
+    : null;
 
   const profile = {
     _id: person._id,
     name: person.name,
     email: person.email,
     avatarUrl: person.avatarUrl,
-    role: membership.role,
-    category: membership.category,
-    isEnrolled: membership.isEnrolled,
-    organization: membership.organization,
+    role: membership?.role ?? null,
+    category: membership?.category ?? null,
+    isEnrolled: membership?.isEnrolled ?? false,
+    organization: membership?.organization ?? null,
   };
 
   res.status(200).json(new ApiResponse(200, { user: profile }, "Profile fetched"));
 });
 
 /**
- * Self-service: any logged-in person (member or admin) can set their own
- * avatar — a display picture only, never used for face recognition
- * (that relies solely on FaceEmbedding, created separately via enrollFace).
- * Lives on Person since it's a global identity trait, not per-org.
+ * Self-service: any logged-in person can set their own avatar — a display
+ * picture only, never used for face recognition. Lives on Person since it
+ * isn't tied to one organization.
  */
 const uploadMyAvatar = asyncHandler(async (req, res) => {
   if (!req.file) {
@@ -109,11 +111,8 @@ const removeMyAvatar = asyncHandler(async (req, res) => {
 });
 
 /**
- * Self-service: lists this person's own pending invites (Memberships with
- * status "pending") across any organization, for a "you've been invited"
- * banner/notice in the frontend. A person can be logged into org A while
- * having a pending invite to org B, so this doesn't filter by
- * req.user.organization.
+ * Self-service: lists this person's pending invites (Memberships with
+ * status "pending") from any organization.
  */
 const listMyInvites = asyncHandler(async (req, res) => {
   const invites = await Membership.find({ person: req.user._id, status: "pending" })
@@ -131,13 +130,13 @@ const listMyInvites = asyncHandler(async (req, res) => {
 });
 
 /**
- * Self-service: accepts a pending invite belonging to the logged-in
- * person. Flips the Membership to "active" and — the whole point of
- * reusing one identity across orgs — copies an existing FaceEmbedding
- * from any of the person's other orgs into this one, so they don't have
- * to re-enroll. If they have no embedding anywhere yet (shouldn't happen
- * for an existing Person, but just in case), the Membership still
- * activates and isEnrolled simply stays false until they self-enroll.
+ * Self-service: accepts a pending invite. Because a person can only have
+ * one active organization, accepting ends their current membership (it
+ * becomes "past") and makes the invited one active. Their face enrollment
+ * is carried over, so they don't have to re-enroll.
+ *
+ * Organization admins can't accept — moving an admin out would leave their
+ * organization without an admin.
  */
 const acceptInvite = asyncHandler(async (req, res) => {
   const membership = await Membership.findOne({
@@ -149,7 +148,26 @@ const acceptInvite = asyncHandler(async (req, res) => {
     throw new ApiError(404, "No pending invite found");
   }
 
-  const existingEmbedding = await FaceEmbedding.findOne({ person: req.user._id });
+  const current = await Membership.findOne({
+    person: req.user._id,
+    status: "active",
+    _id: { $ne: membership._id },
+  });
+  if (current?.role === "admin") {
+    throw new ApiError(409, "You are an admin of another organization and can't join a different one");
+  }
+
+  // Grab the existing embedding before the current membership is wound down.
+  const existingEmbedding = await FaceEmbedding.findOne({ person: req.user._id }).sort({ updatedAt: -1 });
+
+  if (current) {
+    await FaceEmbedding.deleteOne({ person: req.user._id, organization: current.organization });
+    current.status = "past";
+    current.leftAt = new Date();
+    current.leftReason = "switched";
+    current.isEnrolled = false;
+    await current.save();
+  }
 
   if (existingEmbedding) {
     await FaceEmbedding.findOneAndUpdate(
@@ -161,6 +179,8 @@ const acceptInvite = asyncHandler(async (req, res) => {
   }
 
   membership.status = "active";
+  membership.leftAt = null;
+  membership.leftReason = null;
   await membership.save();
 
   res
@@ -177,18 +197,39 @@ const acceptInvite = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Self-service: a member leaves their current organization. The membership
+ * becomes "past" (the organization keeps it in its Removed Members list)
+ * and this organization's face data is deleted. Only an admin can add them
+ * back. Admins can't leave — that would orphan the organization.
+ */
+const leaveOrganization = asyncHandler(async (req, res) => {
+  const membership = req.membership;
+
+  if (membership.role !== "member") {
+    throw new ApiError(400, "Organization admins can't leave their organization");
+  }
+
+  await FaceEmbedding.deleteOne({ person: membership.person, organization: membership.organization });
+
+  membership.status = "past";
+  membership.leftAt = new Date();
+  membership.leftReason = "left";
+  membership.isEnrolled = false;
+  await membership.save();
+
+  res.status(200).json(new ApiResponse(200, {}, "You have left the organization"));
+});
+
+/**
  * Admin-only: adds a member to the admin's own organization.
  *
  * Branches on whether a Person with this email already exists:
- *  - NEW email -> create Person with no password + active Membership, a
- *    "set your password" email is sent with a one-time token link so the
- *    person can activate their own account (no password is ever chosen
- *    by the admin).
- *  - EXISTING email -> INVITE flow: create a "pending" Membership only
- *    (no password field involved — they already have one), an invite
- *    email is sent instead. The Membership doesn't count for
- *    attendance/dashboards/kiosk matching until the person logs in and
- *    accepts it via acceptInvite above.
+ *  - NEW email -> create Person with no password + active Membership, and
+ *    email a one-time "set your password" link.
+ *  - EXISTING email -> INVITE flow: a "pending" Membership is created (or,
+ *    for someone who used to belong to this organization, their past
+ *    Membership is reused and set back to "pending") and an invite email
+ *    is sent. It only takes effect once the person accepts it.
  */
 const addMember = asyncHandler(async (req, res) => {
   const { name, email, category, checkInTime, gracePeriodMinutes } = req.body;
@@ -216,23 +257,65 @@ const addMember = asyncHandler(async (req, res) => {
   const existingPerson = await Person.findOne({ email });
 
   if (existingPerson) {
+    // An admin of another organization can't join a different one (it would
+    // leave that organization without an admin), so don't send an invite
+    // that could never be accepted.
+    const adminElsewhere = await Membership.exists({
+      person: existingPerson._id,
+      role: "admin",
+      status: "active",
+      organization: { $ne: req.user.organization },
+    });
+    if (adminElsewhere) {
+      throw new ApiError(409, "This person administers another organization and can't be added as a member");
+    }
+
     const existingMembership = await Membership.findOne({
       person: existingPerson._id,
       organization: req.user.organization,
     });
-    if (existingMembership) {
-      throw new ApiError(409, "This person is already a member (or has a pending invite) in this organization");
-    }
 
-    const membership = await Membership.create({
-      person: existingPerson._id,
-      organization: req.user.organization,
-      role: "member",
-      category: category || null,
-      status: "pending",
-      checkInTime: checkInTime || null,
-      gracePeriodMinutes: gracePeriodMinutes !== undefined ? Number(gracePeriodMinutes) : 10,
-    });
+    let membership;
+
+    if (existingMembership) {
+      if (existingMembership.status !== "past") {
+        throw new ApiError(409, "This person is already a member (or has a pending invite) in this organization");
+      }
+
+      // Adding back a past member: reuse their record (one record per
+      // person per organization) and start a fresh invite.
+      if (existingMembership.flaggedImagePublicId) {
+        await deleteFlaggedImage(existingMembership.flaggedImagePublicId).catch((err) =>
+          console.error("Failed to delete old flagged image on re-add:", err.message)
+        );
+      }
+
+      existingMembership.status = "pending";
+      existingMembership.leftAt = null;
+      existingMembership.leftReason = null;
+      existingMembership.isEnrolled = false;
+      existingMembership.isFlagged = false;
+      existingMembership.flagReason = null;
+      existingMembership.flaggedAt = null;
+      existingMembership.flaggedImageUrl = null;
+      existingMembership.flaggedImagePublicId = null;
+      if (category) existingMembership.category = category;
+      if (checkInTime) existingMembership.checkInTime = checkInTime;
+      if (gracePeriodMinutes !== undefined) existingMembership.gracePeriodMinutes = Number(gracePeriodMinutes);
+      await existingMembership.save();
+
+      membership = existingMembership;
+    } else {
+      membership = await Membership.create({
+        person: existingPerson._id,
+        organization: req.user.organization,
+        role: "member",
+        category: category || null,
+        status: "pending",
+        checkInTime: checkInTime || null,
+        gracePeriodMinutes: gracePeriodMinutes !== undefined ? Number(gracePeriodMinutes) : 10,
+      });
+    }
 
     await sendMemberInviteEmail(
       existingPerson.email,
@@ -299,14 +382,17 @@ const addMember = asyncHandler(async (req, res) => {
 });
 
 /**
- * Admin-only: lists every member (never other admins) in the admin's
- * own organization, for the Manage Members dashboard.
+ * Admin-only: lists the current members of the admin's organization
+ * (active + pending invites; never admins or past members).
  */
 const listMembers = asyncHandler(async (req, res) => {
-  const memberships = await Membership.find({ organization: req.user.organization, role: "member" })
+  const memberships = await Membership.find({
+    organization: req.user.organization,
+    role: "member",
+    status: { $ne: "past" },
+  })
     .select("category status isEnrolled isActive isFlagged flagReason flaggedAt flaggedImageUrl checkInTime gracePeriodMinutes")
-    .populate("person", "name email")
-    .sort({ isFlagged: -1, "person.name": 1 });
+    .populate("person", "name email");
 
   const members = memberships
     .filter((m) => m.person) // guard against an orphaned Membership if a Person was ever removed elsewhere
@@ -331,11 +417,38 @@ const listMembers = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Admin-only: lists people who used to belong to the admin's organization
+ * (removed by an admin, left on their own, or moved to another
+ * organization), most recent first.
+ */
+const listRemovedMembers = asyncHandler(async (req, res) => {
+  const memberships = await Membership.find({
+    organization: req.user.organization,
+    role: "member",
+    status: "past",
+  })
+    .select("category leftAt leftReason")
+    .populate("person", "name email")
+    .sort({ leftAt: -1 });
+
+  const members = memberships
+    .filter((m) => m.person)
+    .map((m) => ({
+      _id: m.person._id,
+      name: m.person.name,
+      email: m.person.email,
+      category: m.category,
+      leftAt: m.leftAt,
+      leftReason: m.leftReason,
+    }));
+
+  res.status(200).json(new ApiResponse(200, { members }, "Removed members fetched"));
+});
+
+/**
  * Admin-only: edits a member's name/email (on Person), category (on
  * Membership), or their late-entry check-in time / grace period (on
- * Membership). Scoped to the admin's own org and to role "member" so an
- * admin can never edit another org's people or another admin's account
- * through this route.
+ * Membership). Scoped to the admin's own org and to role "member".
  */
 const updateMember = asyncHandler(async (req, res) => {
   const { name, email, category } = req.body;
@@ -412,10 +525,8 @@ const updateMember = asyncHandler(async (req, res) => {
 
 /**
  * Admin-only: toggles a member's isActive flag on their Membership.
- * Deactivated members are blocked at login and mid-session (see
- * auth.service.js / auth.middleware.js) but their data (attendance
- * history, enrollment) is left intact — this is reversible, unlike
- * removeMember below.
+ * Deactivated members are blocked at login and mid-session but their data
+ * is left intact — reversible, unlike removeMember below.
  */
 const setMemberActiveStatus = (isActive) =>
   asyncHandler(async (req, res) => {
@@ -440,37 +551,42 @@ const setMemberActiveStatus = (isActive) =>
   });
 
 /**
- * Admin-only: permanently removes a member from THIS organization —
- * deletes their Membership and this org's FaceEmbedding. The Person
- * (global identity) is deliberately left alone: they may belong to other
- * orgs, and even if not, an orphaned Person with no Membership is
- * harmless (they simply can't log into anything). AttendanceRecords are
- * also kept (they already snapshot category/name/email at mark time) so
- * historical exports stay accurate even after the membership is gone.
+ * Admin-only: removes a member from THIS organization — always a soft
+ * delete. The membership becomes "past" (a cancelled pending invite too,
+ * with leftReason "invite_cancelled"); the record, attendance history and
+ * Person account are all kept. Only this organization's face data is
+ * deleted. The admin can add them back later from Removed Members.
  */
 const removeMember = asyncHandler(async (req, res) => {
   const membership = await Membership.findOne({
     person: req.params.id,
     organization: req.user.organization,
     role: "member",
+    status: { $ne: "past" },
   });
   if (!membership) {
     throw new ApiError(404, "Member not found");
   }
 
-  await FaceEmbedding.deleteOne({ person: membership.person, organization: membership.organization });
-  await membership.deleteOne();
+  // Nothing is ever hard-deleted: a cancelled invite is kept as a past
+  // membership too, so it also appears in Removed members.
+  const wasPending = membership.status === "pending";
 
-  res.status(200).json(new ApiResponse(200, {}, "Member removed"));
+  await FaceEmbedding.deleteOne({ person: membership.person, organization: membership.organization });
+
+  membership.status = "past";
+  membership.leftAt = new Date();
+  membership.leftReason = wasPending ? "invite_cancelled" : "removed";
+  membership.isEnrolled = false;
+  await membership.save();
+
+  res.status(200).json(new ApiResponse(200, {}, wasPending ? "Invite cancelled" : "Member removed"));
 });
 
 /**
- * Admin-only: clears a member's flag (on their Membership for this org)
- * after review. The flag on any individual AttendanceRecord that
- * triggered it is left as-is — it's a historical fact ("this record
- * scored X") — only the "needs review" flag is cleared here. Also cleans
- * up the review image, if one exists, since there's no reason to keep it
- * once reviewed.
+ * Admin-only: clears a member's flag after review. The flag on any
+ * individual AttendanceRecord is left as-is — it's a historical fact.
+ * Also deletes the review image, since there's no reason to keep it.
  */
 const unflagMember = asyncHandler(async (req, res) => {
   const membership = await Membership.findOne({
@@ -500,8 +616,7 @@ const unflagMember = asyncHandler(async (req, res) => {
 
 /**
  * Admin-only: deletes just the flagged-review image, independent of the
- * flag itself — the member can remain flagged with no image attached
- * (e.g. admin already looked at it and doesn't need to keep it on file).
+ * flag itself — the member can remain flagged with no image attached.
  */
 const deleteFlagImage = asyncHandler(async (req, res) => {
   const membership = await Membership.findOne({
@@ -531,8 +646,10 @@ export {
   removeMyAvatar,
   listMyInvites,
   acceptInvite,
+  leaveOrganization,
   addMember,
   listMembers,
+  listRemovedMembers,
   updateMember,
   setMemberActiveStatus,
   removeMember,

@@ -26,7 +26,11 @@ const markAttendance = asyncHandler(async (req, res) => {
 
 const getMyAttendance = asyncHandler(async (req, res) => {
   const { page, limit } = req.query;
-  const result = await attendanceService.getAttendanceForUser(req.user._id, { page, limit });
+  const result = await attendanceService.getAttendanceForUser(req.user._id, {
+    page,
+    limit,
+    organizationId: req.user.organization,
+  });
   res.status(200).json(new ApiResponse(200, result, "Attendance history fetched"));
 });
 

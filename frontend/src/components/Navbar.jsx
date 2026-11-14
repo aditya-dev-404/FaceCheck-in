@@ -1,20 +1,37 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
+import { MdDashboard, MdGroup, MdSettings } from "react-icons/md";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
-import ThemeToggle from "./ThemeToggle"
+import useConfirm from "../hooks/useConfirm";
+import ThemeToggle from "./ThemeToggle";
+
+// Links shown in the bar depend on the person's role. Someone with no active
+// organization gets no links at all.
+const adminLinks = [
+  { to: "/dashboard", label: "Dashboard", icon: MdDashboard },
+  { to: "/manage-members", label: "Members", icon: MdGroup },
+  { to: "/manage-organization", label: "Organization", icon: MdSettings },
+];
+
+const memberLinks = [{ to: "/dashboard", label: "Dashboard", icon: MdDashboard }];
+
+const navLinkClass = ({ isActive }) =>
+  `group flex items-center gap-2 rounded-clay-sm px-2.5 py-2 text-sm font-medium transition-colors duration-200 sm:px-3 ${
+    isActive
+      ? "bg-surface-raised text-primary shadow-clay-inset"
+      : "text-text-muted hover:bg-surface-raised hover:text-text"
+  }`;
 
 const Navbar = () => {
-  const { user, logout, refreshUser, switchOrganization } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
+  const confirm = useConfirm();
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState("");
 
-  const [showOrgMenu, setShowOrgMenu] = useState(false);
-  const [orgs, setOrgs] = useState([]);
-  const [orgsLoading, setOrgsLoading] = useState(false);
-  const [switchingId, setSwitchingId] = useState(null);
-  const [orgError, setOrgError] = useState("");
+  const links = !user?.organization ? [] : user.role === "admin" ? adminLinks : memberLinks;
 
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
@@ -48,149 +65,92 @@ const Navbar = () => {
     }
   };
 
-  // Orgs are fetched when the menu opens, so the list is always current.
-  const toggleOrgMenu = async () => {
-    if (showOrgMenu) {
-      setShowOrgMenu(false);
-      return;
-    }
-    setShowOrgMenu(true);
-    setOrgError("");
-    setOrgsLoading(true);
-    try {
-      const { data } = await axiosInstance.get("/auth/organizations");
-      setOrgs(data.data.organizations);
-    } catch (err) {
-      setOrgs([]);
-      setOrgError(err.response?.data?.message || "Could not load organizations");
-    } finally {
-      setOrgsLoading(false);
-    }
-  };
+  const handleLeave = async () => {
+    const orgName = user?.organization?.name || "this organization";
+    const ok = await confirm({
+      title: "Leave organization?",
+      message: `You'll leave ${orgName}. Only an admin can add you back.`,
+      confirmText: "Leave",
+      tone: "danger",
+    });
+    if (!ok) return;
 
-  const handleSwitch = async (membershipId) => {
-    setSwitchingId(membershipId);
-    setOrgError("");
+    setLeaving(true);
+    setError("");
     try {
-      await switchOrganization(membershipId);
-      // Full load so every page refetches data for the new org.
+      await axiosInstance.post("/users/me/leave");
+      // Full load so every page drops the old organization's data.
       window.location.assign("/dashboard");
     } catch (err) {
-      setOrgError(err.response?.data?.message || "Could not switch organization");
-      setSwitchingId(null);
+      setError(err.response?.data?.message || "Could not leave the organization");
+      setLeaving(false);
     }
   };
 
   return (
-   <>
-      <nav className="flex items-center justify-between bg-surface rounded-b-clay shadow-clay-sm px-4 sm:px-6 py-3">
-        <div className="relative flex items-center gap-1 min-w-0">
-          <Link to="/dashboard" className="flex items-center gap-2 min-w-0">
-            {user?.organization?.logoUrl ? (
-              <img src={user.organization.logoUrl} alt="" className="h-9 w-9 rounded-clay-sm object-cover shadow-clay-sm shrink-0" />
-            ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-clay-sm bg-primary text-xs font-semibold text-primary-fg shadow-clay-sm">
-                {user?.organization?.name?.[0] || "F"}
-              </div>
-            )}
-            <span className="font-medium text-text truncate hidden xs:inline sm:inline">
-              {user?.organization?.name || "FaceCheck-in"}
-            </span>
-          </Link>
-
-          <button
-            type="button"
-            onClick={toggleOrgMenu}
-            aria-label="Switch organization"
-            aria-expanded={showOrgMenu}
-            className="shrink-0 rounded-clay-sm px-2 py-1 text-xs text-text-muted hover:bg-surface-raised transition-shadow"
-          >
-            ▾
-          </button>
-
-          {showOrgMenu && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowOrgMenu(false)} />
-              <div className="absolute left-0 top-full z-50 mt-3 w-72 max-w-[85vw] space-y-1 rounded-clay bg-surface p-2 shadow-clay">
-                <p className="px-2 pt-1 text-xs font-medium uppercase tracking-wide text-text-muted">
-                  Your organizations
-                </p>
-
-                {orgsLoading ? (
-                  <p className="px-2 py-2 text-sm text-text-muted">Loading...</p>
-                ) : (
-                  orgs.map((o) => (
-                    <button
-                      key={o.membershipId}
-                      type="button"
-                      onClick={() => !o.isCurrent && handleSwitch(o.membershipId)}
-                      disabled={o.isCurrent || !o.isActive || switchingId !== null}
-                      className={`flex w-full items-center gap-2 rounded-clay-sm px-2 py-2 text-left hover:bg-surface-raised disabled:cursor-default ${
-                        o.isActive ? "" : "opacity-50"
-                      }`}
-                    >
-                      {o.organization.logoUrl ? (
-                        <img src={o.organization.logoUrl} alt="" className="h-8 w-8 shrink-0 rounded-clay-sm object-cover" />
-                      ) : (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-clay-sm bg-primary text-xs font-semibold text-primary-fg">
-                          {o.organization.name?.[0] || "?"}
-                        </div>
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm text-text">{o.organization.name}</span>
-                        <span className="block truncate text-xs capitalize text-text-muted">
-                          {o.role}
-                          {!o.isActive ? " · Deactivated" : ""}
-                        </span>
-                      </span>
-                      {o.isCurrent && <span className="shrink-0 text-xs font-medium text-primary">✓</span>}
-                      {switchingId === o.membershipId && (
-                        <span className="shrink-0 text-xs text-text-muted">...</span>
-                      )}
-                    </button>
-                  ))
-                )}
-
-                {orgError && <p className="px-2 text-xs text-danger">{orgError}</p>}
-
-                <Link
-                  to="/my-organizations"
-                  onClick={() => setShowOrgMenu(false)}
-                  className="block rounded-clay-sm border-t border-border px-2 pt-3 pb-2 text-sm font-medium text-text hover:bg-surface-raised"
-                >
-                  My Organizations
-                </Link>
-              </div>
-            </>
+    <>
+      <nav className="flex items-center justify-between gap-2 rounded-b-clay bg-surface px-3 py-2.5 shadow-clay-sm sm:gap-4 sm:px-6">
+        {/* Brand */}
+        <Link to="/dashboard" className="group flex min-w-0 items-center gap-2.5">
+          {user?.organization?.logoUrl ? (
+            <img
+              src={user.organization.logoUrl}
+              alt=""
+              className="h-9 w-9 shrink-0 rounded-clay-sm object-cover shadow-clay-sm transition-transform duration-200 group-hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-clay-sm bg-primary text-xs font-semibold text-primary-fg shadow-clay-sm transition-transform duration-200 group-hover:scale-105">
+              {user?.organization?.name?.[0] || "F"}
+            </div>
           )}
-        </div>
+          <span className="hidden truncate font-semibold text-text md:inline">
+            {user?.organization?.name || "FaceCheck-in"}
+          </span>
+        </Link>
 
-        <div className="flex items-center gap-2 sm:gap-4">
-          <ThemeToggle />
+        {/* Page links */}
+        {links.length > 0 && (
+          <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
+            {links.map(({ to, label, icon: Icon }) => (
+              <NavLink key={to} to={to} className={navLinkClass} title={label} aria-label={label}>
+                <Icon
+                  aria-hidden="true"
+                  className="text-xl transition-transform duration-200 group-hover:-translate-y-0.5"
+                />
+                <span className="hidden lg:inline">{label}</span>
+              </NavLink>
+            ))}
+          </div>
+        )}
 
-          <button type="button" onClick={() => setShowAvatarModal(true)} className="flex items-center gap-2">
-            {user?.avatarUrl ? (
-              <img src={user.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover shadow-clay-sm" />
-            ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-raised text-xs font-semibold text-text shadow-clay-sm">
-                {user?.name?.[0] || "?"}
-              </div>
-            )}
-            <span className="text-sm text-text hidden sm:inline">{user?.name}</span>
-          </button>
-        </div>
+        {/* Profile */}
+        <button
+          type="button"
+          onClick={() => setShowAvatarModal(true)}
+          className="flex shrink-0 items-center gap-2 rounded-full p-1 transition-colors duration-200 hover:bg-surface-raised sm:pr-3"
+          aria-label="Open profile"
+        >
+          {user?.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover shadow-clay-sm" />
+          ) : (
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-raised text-xs font-semibold text-text shadow-clay-sm">
+              {user?.name?.[0] || "?"}
+            </div>
+          )}
+          <span className="hidden text-sm font-medium text-text sm:inline">{user?.name}</span>
+        </button>
       </nav>
 
       {showAvatarModal && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
           onClick={() => setShowAvatarModal(false)}
         >
           <div
-            className="w-full sm:max-w-xs space-y-4 rounded-t-clay sm:rounded-clay bg-surface p-6 shadow-clay max-h-[90vh] overflow-y-auto"
+            className="max-h-[90vh] w-full space-y-4 overflow-y-auto rounded-t-clay bg-surface p-6 shadow-clay sm:max-w-xs sm:rounded-clay"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-medium text-text">Profile picture</h3>
+            <h3 className="text-lg font-medium text-text">Profile</h3>
             <div className="flex justify-center">
               {user?.avatarUrl ? (
                 <img src={user.avatarUrl} alt="" className="h-24 w-24 rounded-full object-cover shadow-clay-sm" />
@@ -210,9 +170,25 @@ const Navbar = () => {
                 type="button"
                 onClick={handleRemoveAvatar}
                 disabled={uploading}
-                className="w-full rounded-clay-sm px-3 py-2.5 text-sm font-medium text-danger shadow-clay-sm hover:bg-surface-raised disabled:opacity-50 transition-shadow"
+                className="w-full rounded-clay-sm px-3 py-2.5 text-sm font-medium text-danger shadow-clay-sm transition-shadow hover:bg-surface-raised disabled:opacity-50"
               >
                 Remove picture
+              </button>
+            )}
+
+            <div className="flex items-center justify-between border-t border-border pt-3">
+              <span className="text-sm font-medium text-text">Appearance</span>
+              <ThemeToggle />
+            </div>
+
+            {user?.role === "member" && (
+              <button
+                type="button"
+                onClick={handleLeave}
+                disabled={leaving}
+                className="w-full rounded-clay-sm px-3 py-2.5 text-sm font-medium text-danger shadow-clay-sm transition-shadow hover:bg-surface-raised disabled:opacity-50"
+              >
+                {leaving ? "Leaving..." : "Leave organization"}
               </button>
             )}
             <div className="flex gap-2 border-t border-border pt-3">

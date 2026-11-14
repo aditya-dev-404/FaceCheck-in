@@ -10,12 +10,17 @@ const brevo = new BrevoClient({ apiKey: env.BREVO_API_KEY });
  * whether that should fail the whole request or just be logged.
  */
 const sendEmail = async ({ to, subject, htmlContent }) => {
-  await brevo.transactionalEmails.sendTransacEmail({
-    sender: { email: env.SENDER_MAIL, name: "FaceCheck-in" },
-    to: [{ email: to }],
-    subject,
-    htmlContent,
-  });
+  try {
+    const result = await brevo.transactionalEmails.sendTransacEmail({
+      sender: { email: env.SENDER_MAIL, name: "FaceCheck-in" },
+      to: [{ email: to }],
+      subject,
+      htmlContent,
+    });
+  } catch (err) {
+    console.error("Brevo rejected email to", to, err.statusCode, err.body || err.message);
+    throw err;
+  }
 };
 
 const emailWrapper = (bodyContent) => `

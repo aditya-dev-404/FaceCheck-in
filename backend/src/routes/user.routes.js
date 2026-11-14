@@ -8,8 +8,10 @@ import {
   removeMyAvatar,
   listMyInvites,
   acceptInvite,
+  leaveOrganization,
   addMember,
   listMembers,
+  listRemovedMembers,
   updateMember,
   setMemberActiveStatus,
   removeMember,
@@ -22,7 +24,7 @@ import {
   getMemberAttendance,
   exportMemberAttendance,
 } from "../controllers/memberDetail.controller.js";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { verifyJWT, verifyPerson } from "../middlewares/auth.middleware.js";
 import { requireAdmin } from "../middlewares/role.middleware.js";
 import { imageUpload } from "../middlewares/imageUpload.middleware.js";
 
@@ -30,21 +32,24 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const router = Router();
 
-router.use(verifyJWT); // every route below requires a logged-in user
+// Routes a logged-in person can use even with no active organization
+// (they left, were removed, or are waiting on an invite).
+router.get("/me", verifyPerson, getProfile);
+router.post("/me/avatar", verifyPerson, imageUpload.single("avatar"), uploadMyAvatar);
+router.delete("/me/avatar", verifyPerson, removeMyAvatar);
+router.get("/me/invites", verifyPerson, listMyInvites);
+router.patch("/me/invites/:membershipId/accept", verifyPerson, acceptInvite);
 
-router.get("/me", getProfile);
+// Everything below requires an active organization.
+router.use(verifyJWT);
+
 router.post("/enroll", upload.single("image"), enrollFace);
-router.post("/me/avatar", imageUpload.single("avatar"), uploadMyAvatar);
-router.delete("/me/avatar", removeMyAvatar);
-
-// Self-service: pending invites (a Person may have invites from orgs
-// they're not currently logged into).
-router.get("/me/invites", listMyInvites);
-router.patch("/me/invites/:membershipId/accept", acceptInvite);
+router.post("/me/leave", leaveOrganization);
 
 // Admin-only member management
 router.get("/", requireAdmin, listMembers);
 router.post("/", requireAdmin, addMember);
+router.get("/removed", requireAdmin, listRemovedMembers);
 
 // Admin-only member detail view (profile, stats, attendance records, CSV)
 router.get("/:id/details", requireAdmin, getMemberDetails);

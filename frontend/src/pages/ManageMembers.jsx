@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { Navigate, Link, useNavigate } from "react-router-dom";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
+import useConfirm from "../hooks/useConfirm";
+import RemovedMembers from "../components/RemovedMembers";
 import {
   MdAccessTime,
   MdAdd,
@@ -36,6 +38,7 @@ const SummaryTile = ({ icon: Icon, label, value, tone = "text-primary" }) => (
 const ManageMembers = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [members, setMembers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -123,7 +126,13 @@ const ManageMembers = () => {
 
   const removeMember = async (member) => {
     setOpenMenuId(null);
-    if (!window.confirm(`Permanently remove ${member.name}? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Remove ${member.name}?`,
+      message: "They'll move to Removed members and can be added back later.",
+      confirmText: "Remove",
+      tone: "danger",
+    });
+    if (!ok) return;
     await axiosInstance.delete(`/users/${member._id}`);
     fetchMembers();
   };
@@ -135,7 +144,13 @@ const ManageMembers = () => {
   };
 
   const deleteFlagImage = async (member) => {
-    if (!window.confirm("Delete this flagged image? The member will remain flagged.")) return;
+    const ok = await confirm({
+      title: "Delete flagged image?",
+      message: "The member will stay flagged, but this review image will be gone.",
+      confirmText: "Delete image",
+      tone: "danger",
+    });
+    if (!ok) return;
     await axiosInstance.delete(`/users/${member._id}/flag-image`);
     setViewingMember(null);
     fetchMembers();
@@ -143,7 +158,8 @@ const ManageMembers = () => {
 
   if (loading) return <p className="clay-page text-sm text-text-muted">Loading members...</p>;
 
-  const activeCount = members.filter((m) => m.isActive).length;
+  // A pending member has only been invited — they haven't accepted yet, so they don't count as active.
+  const activeCount = members.filter((m) => m.isActive && m.status !== "pending").length;
   const enrolledCount = members.filter((m) => m.isEnrolled).length;
   const flaggedCount = members.filter((m) => m.isFlagged).length;
 
@@ -343,13 +359,15 @@ const ManageMembers = () => {
                         <td className="px-4 py-3">
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full bg-surface-raised px-2.5 py-0.5 text-xs font-medium shadow-clay-sm ${
-                              member.isActive ? "text-success" : "text-text-muted"
+                              member.isActive && member.status !== "pending" ? "text-success" : "text-text-muted"
                             }`}
                           >
                             <span
-                              className={`h-1.5 w-1.5 rounded-full ${member.isActive ? "bg-success" : "bg-text-muted"}`}
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                member.isActive && member.status !== "pending" ? "bg-success" : "bg-text-muted"
+                              }`}
                             />
-                            {member.isActive ? "Active" : "Deactivated"}
+                            {member.status === "pending" ? "Invite pending" : member.isActive ? "Active" : "Deactivated"}
                           </span>
                         </td>
                         <td className="relative px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -412,6 +430,7 @@ const ManageMembers = () => {
           </table>
         </div>
       </div>
+      <RemovedMembers refreshKey={members.length} onChanged={fetchMembers} />
 
       {error && <p className="text-sm text-danger">{error}</p>}
 

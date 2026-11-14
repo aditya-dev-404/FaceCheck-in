@@ -12,47 +12,33 @@ import { sendPasswordResetEmail } from "./email.service.js";
 const ACCESS_TOKEN_EXPIRY = "15m";
 const REFRESH_TOKEN_EXPIRY = "7d";
 
-// NOTE: a Person can hold several ACTIVE Memberships (one per org). Login
-// resolves to the org they last used (Person.lastActiveOrganization),
-// falling back to the first usable one; they can change org afterwards via
-// switchOrganization below. "pending" Memberships (unaccepted invites) are
-// always excluded so logging in never grants access to an org that hasn't
-// been accepted yet.
+// A person has at most ONE active Membership, so tokens only identify the
+// person; the active organization is looked up from the database on every
+// request (see auth.middleware.js). A person with no active membership can
+// still log in (to accept an invite), they just have no organization yet.
 
-const generateAccessToken = (person, membership) => {
-  return jwt.sign(
-    {
-      _id: person._id,
-      email: person.email,
-      role: membership.role,
-      organization: membership.organization,
-      membershipId: membership._id,
-    },
-    env.JWT_ACCESS_SECRET,
-    { expiresIn: ACCESS_TOKEN_EXPIRY }
-  );
+const generateAccessToken = (person) => {
+  return jwt.sign({ _id: person._id, email: person.email }, env.JWT_ACCESS_SECRET, {
+    expiresIn: ACCESS_TOKEN_EXPIRY,
+  });
 };
 
-const generateRefreshToken = (person, membership) => {
-  return jwt.sign(
-    { _id: person._id, organization: membership.organization, membershipId: membership._id },
-    env.JWT_REFRESH_SECRET,
-    { expiresIn: REFRESH_TOKEN_EXPIRY }
-  );
+const generateRefreshToken = (person) => {
+  return jwt.sign({ _id: person._id }, env.JWT_REFRESH_SECRET, {
+    expiresIn: REFRESH_TOKEN_EXPIRY,
+  });
 };
 
 /**
  * Issues a fresh access+refresh pair for a person and persists the refresh
  * token on the Person document (rotate-on-refresh: the old one is invalid
- * the moment a new one is issued). Also records the org as the person's
- * last-used one, so every login/register/switch/refresh keeps it current.
+ * the moment a new one is issued).
  */
-const generateTokens = async (person, membership) => {
-  const accessToken = generateAccessToken(person, membership);
-  const refreshToken = generateRefreshToken(person, membership);
+const generateTokens = async (person) => {
+  const accessToken = generateAccessToken(person);
+  const refreshToken = generateRefreshToken(person);
 
   person.refreshToken = refreshToken;
-  person.lastActiveOrganization = membership.organization;
   await person.save({ validateBeforeSave: false });
 
   return { accessToken, refreshToken };
@@ -62,12 +48,6 @@ const generateTokens = async (person, membership) => {
  * Registers the FIRST admin of a brand-new organization. This is the only
  * self-service signup in the app — regular members are never created this
  * way; an admin adds them directly (see addMember in user.controller.js).
- *
- * NOTE: if a Person with this email already exists (e.g. they're already
- * an admin/member of another org), this still errors out rather than
- * attaching a second Membership to them — letting an existing account
- * "join" a new org via register is the multi-org feature itself and needs
- * its own authenticated flow, not this public endpoint.
  */
 const registerAdmin = async ({
   name,
@@ -115,7 +95,7 @@ const registerAdmin = async ({
     status: "active",
   });
 
-  const { accessToken, refreshToken } = await generateTokens(person, membership);
+  const { accessToken, refreshToken } = await generateTokens(person);
 
   return { person, membership, accessToken, refreshToken };
 };
@@ -133,25 +113,25 @@ const loginUser = async ({ email, password }) => {
     throw new ApiError(401, "Invalid email or password");
   }
 
-  // status: "active" filter is deliberate — a pending invite must never be
-  // usable to log into that org.
-  const memberships = await Membership.find({ person: person._id, status: "active" });
-  if (memberships.length === 0) {
-    throw new ApiError(403, "This account is not linked to any organization");
-  }
+  // Only an "active" membership gives access — a pending invite or a past
+  // membership never does.
+  const membership = await Membership.findOne({ person: person._id, status: "active" });
 
-  // Deactivated memberships can't be logged into — skip them when choosing.
-  const usable = memberships.filter((m) => m.isActive);
-  if (usable.length === 0) {
+  if (membership && !membership.isActive) {
     throw new ApiError(403, "This account has been deactivated. Contact your organization admin.");
   }
 
-  // Prefer the org they last used; otherwise just the first usable one.
-  const lastOrgId = person.lastActiveOrganization?.toString();
-  const membership =
-    usable.find((m) => m.organization.toString() === lastOrgId) || usable[0];
+  // No active organization is fine as long as the person has some history
+  // with the app (a pending invite or past membership) — they can log in to
+  // accept an invite. An account with no memberships at all can't.
+  if (!membership) {
+    const hasAnyMembership = await Membership.exists({ person: person._id });
+    if (!hasAnyMembership) {
+      throw new ApiError(403, "This account is not linked to any organization");
+    }
+  }
 
-  const { accessToken, refreshToken } = await generateTokens(person, membership);
+  const { accessToken, refreshToken } = await generateTokens(person);
 
   return { person, membership, accessToken, refreshToken };
 };
@@ -177,73 +157,16 @@ const refreshAccessToken = async (incomingRefreshToken) => {
     throw new ApiError(401, "Refresh token is expired or has been reused");
   }
 
-  const membership = await Membership.findById(decoded.membershipId);
-  if (!membership || membership.status !== "active" || !membership.isActive) {
+  const membership = await Membership.findOne({ person: person._id, status: "active" });
+  if (membership && !membership.isActive) {
     throw new ApiError(403, "This account has been deactivated. Contact your organization admin.");
   }
 
-  return generateTokens(person, membership);
+  return generateTokens(person);
 };
 
 const logoutUser = async (personId) => {
   await Person.findByIdAndUpdate(personId, { $set: { refreshToken: null } });
-};
-
-/**
- * Lists the person's ACTIVE memberships (one per org) for the org switcher
- * and the My Organizations page. Deactivated ones are still returned (with
- * isActive:false) so the UI can show them greyed out; switching into them
- * is blocked in switchOrganization. Pending invites are not included.
- */
-const listMyOrganizations = async (personId, currentMembershipId) => {
-  const memberships = await Membership.find({ person: personId, status: "active" })
-    .select("organization role category isActive")
-    .populate("organization", "name logoUrl");
-
-  return memberships
-    .filter((m) => m.organization) // guard against an org that was deleted
-    .map((m) => ({
-      membershipId: m._id,
-      organization: {
-        _id: m.organization._id,
-        name: m.organization.name,
-        logoUrl: m.organization.logoUrl,
-      },
-      role: m.role,
-      category: m.category,
-      isActive: m.isActive,
-      isCurrent: String(m._id) === String(currentMembershipId),
-    }))
-    .sort((a, b) => a.organization.name.localeCompare(b.organization.name));
-};
-
-/**
- * Moves the session into another org. The membership must belong to this
- * person, be accepted ("active" status) and not be deactivated. Rotates
- * both tokens to the new membership, so the old org's access token stops
- * being the one in the cookie.
- */
-const switchOrganization = async (personId, membershipId) => {
-  const membership = await Membership.findOne({
-    _id: membershipId,
-    person: personId,
-    status: "active",
-  });
-  if (!membership) {
-    throw new ApiError(404, "Organization membership not found");
-  }
-  if (!membership.isActive) {
-    throw new ApiError(403, "Your account in this organization has been deactivated.");
-  }
-
-  const person = await Person.findById(personId);
-  if (!person) {
-    throw new ApiError(404, "Account not found");
-  }
-
-  const { accessToken, refreshToken } = await generateTokens(person, membership);
-
-  return { person, membership, accessToken, refreshToken };
 };
 
 const RESET_TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
@@ -318,8 +241,6 @@ export {
   loginUser,
   refreshAccessToken,
   logoutUser,
-  listMyOrganizations,
-  switchOrganization,
   forgotPassword,
   resetPassword,
   setInitialPassword,

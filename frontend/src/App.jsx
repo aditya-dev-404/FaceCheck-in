@@ -11,16 +11,17 @@ import AddMember from "./pages/AddMember";
 import ManageMembers from "./pages/ManageMembers";
 import MemberDetail from "./pages/MemberDetail";
 import ManageOrganization from "./pages/ManageOrganization";
-import MyOrganizations from "./pages/MyOrganizations";
 import Kiosk from "./pages/Kiosk";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/LandingPage";
 import PublicLayout from "./components/PublicLayout";
 import PublicRoute from "./components/PublicRoute";
 import SetPassword from "./pages/SetPassword";
+import { ConfirmProvider } from "./context/ConfirmProvider";
 
 function App() {
   return (
+    <ConfirmProvider>
     <Routes>
       <Route element={<PublicLayout />}>
         {/* Accessible to both guests and logged-in users */}
@@ -47,11 +48,11 @@ function App() {
         <Route path="/manage-members" element={<ManageMembers />} />
         <Route path="/manage-members/:id" element={<MemberDetail />} />
         <Route path="/manage-organization" element={<ManageOrganization />} />
-        <Route path="/my-organizations" element={<MyOrganizations />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </ConfirmProvider>
   );
 }
 

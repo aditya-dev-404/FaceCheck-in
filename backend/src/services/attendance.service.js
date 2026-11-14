@@ -147,8 +147,8 @@ const markAttendance = async (imageBuffer, filename, mimetype, organizationId, m
 // NOTE: param name kept as "userId" at the call site's discretion is fine —
 // semantically this is now a Person._id, which is stable across the
 // User -> Person migration, so attendance.controller.js needs no changes.
-const getAttendanceForUser = async (personId, { page, limit } = {}) => {
-  const query = { person: personId };
+const getAttendanceForUser = async (personId, { page, limit, organizationId } = {}) => {
+  const query = { person: personId, ...(organizationId && { organization: organizationId }) };
 
   if (!page && !limit) {
     return AttendanceRecord.find(query).sort({ markedAt: -1 });

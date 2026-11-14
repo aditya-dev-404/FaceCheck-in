@@ -2,10 +2,11 @@ import mongoose, { Schema } from "mongoose";
 
 // Membership = a Person's relationship to one Organization.
 // Everything that used to be "per-org" on the old User document lives here.
-// FaceEmbedding stays keyed per (person, organization) — see note in
-// FaceEmbedding.model.js — but the embedding vector itself can be copied
-// from an existing Membership's embedding when a Person joins a new org,
-// instead of re-capturing.
+//
+// A person has AT MOST ONE "active" membership at any time (enforced by the
+// partial unique index below). Earlier organizations stay on record as "past"
+// memberships, so an organization can still see who used to belong to it and
+// add them back later.
 const membershipSchema = new Schema(
   {
     person: {
@@ -35,13 +36,24 @@ const membershipSchema = new Schema(
       type: Number,
       default: 10,
     },
-    // "active": full member, counts for attendance/dashboards/kiosk matching.
-    // "pending": created via invite (addMember found an existing Person) —
-    // doesn't count anywhere until the person logs in and accepts it.
+    // "active":  the person's current organization — counts for attendance/dashboards/kiosk matching.
+    // "pending": an invite (admin added a person who already has an account) — counts nowhere until accepted.
+    // "past":    the person was removed by an admin, left, or moved to another organization.
     status: {
       type: String,
-      enum: ["active", "pending"],
+      enum: ["active", "pending", "past"],
       default: "active",
+    },
+    leftAt: {
+      type: Date,
+      default: null,
+    },
+    // Why a membership became "past": removed by an admin, left on their own,
+    // joined another organization, or an invite that an admin cancelled.
+    leftReason: {
+      type: String,
+      enum: ["removed", "left", "switched", "invite_cancelled", null],
+      default: null,
     },
     isEnrolled: {
       type: Boolean,
@@ -75,7 +87,11 @@ const membershipSchema = new Schema(
   { timestamps: true }
 );
 
-// A person can only have one membership per organization.
+// One membership record per person per organization. Re-adding a past member
+// reuses their existing record instead of creating a second one.
 membershipSchema.index({ person: 1, organization: 1 }, { unique: true });
+
+// ...and only one ACTIVE membership per person across all organizations.
+membershipSchema.index({ person: 1 }, { unique: true, partialFilterExpression: { status: "active" } });
 
 export const Membership = mongoose.model("Membership", membershipSchema);

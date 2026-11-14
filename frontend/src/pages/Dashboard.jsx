@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
+import useConfirm from "../hooks/useConfirm";
 import {
   MdAccessTime,
   MdChevronLeft,
@@ -55,6 +56,7 @@ const ActionTile = ({ to, icon: Icon, title, description, primary }) => (
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState([]);
@@ -90,11 +92,20 @@ const Dashboard = () => {
   }, [user]);
 
   const handleAcceptInvite = async (membershipId) => {
+    const ok = await confirm({
+      title: "Switch organization?",
+      message: "Accepting this invite will remove you from your current organization.",
+      confirmText: "Accept invite",
+      tone: "danger",
+    });
+    if (!ok) return;
+
     setAcceptingId(membershipId);
     setInviteError("");
     try {
       await axiosInstance.patch(`/users/me/invites/${membershipId}/accept`);
-      setInvites((prev) => prev.filter((invite) => invite.membershipId !== membershipId));
+      // Full load so the whole app picks up the new organization.
+      window.location.assign("/dashboard");
     } catch (err) {
       setInviteError(err.response?.data?.message || "Could not accept invite");
     } finally {

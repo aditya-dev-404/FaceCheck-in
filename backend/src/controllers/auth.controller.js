@@ -1,6 +1,5 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { ApiError } from "../utils/ApiError.js";
 import * as authService from "../services/auth.service.js";
 
 // Shared cookie settings for both access and refresh tokens.
@@ -9,6 +8,15 @@ const cookieOptions = {
   secure: process.env.NODE_ENV === "production",
   sameSite: "strict",
 };
+
+// membership is null when the person has no active organization right now.
+const toSafeUser = (person, membership) => ({
+  _id: person._id,
+  name: person.name,
+  email: person.email,
+  role: membership?.role ?? null,
+  organization: membership?.organization ?? null,
+});
 
 const register = asyncHandler(async (req, res) => {
   const { name, email, password, organizationName, organizationCode, categories } = req.body;
@@ -22,19 +30,11 @@ const register = asyncHandler(async (req, res) => {
     categories,
   });
 
-  const safeUser = {
-    _id: person._id,
-    name: person.name,
-    email: person.email,
-    role: membership.role,
-    organization: membership.organization,
-  };
-
   res
     .status(201)
     .cookie("accessToken", accessToken, cookieOptions)
     .cookie("refreshToken", refreshToken, cookieOptions)
-    .json(new ApiResponse(201, { user: safeUser }, "Organization and admin account created"));
+    .json(new ApiResponse(201, { user: toSafeUser(person, membership) }, "Organization and admin account created"));
 });
 
 const login = asyncHandler(async (req, res) => {
@@ -45,19 +45,11 @@ const login = asyncHandler(async (req, res) => {
     password,
   });
 
-  const safeUser = {
-    _id: person._id,
-    name: person.name,
-    email: person.email,
-    role: membership.role,
-    organization: membership.organization,
-  };
-
   res
     .status(200)
     .cookie("accessToken", accessToken, cookieOptions)
     .cookie("refreshToken", refreshToken, cookieOptions)
-    .json(new ApiResponse(200, { user: safeUser }, "Logged in successfully"));
+    .json(new ApiResponse(200, { user: toSafeUser(person, membership) }, "Logged in successfully"));
 });
 
 const refresh = asyncHandler(async (req, res) => {
@@ -109,55 +101,4 @@ const setInitialPassword = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, {}, "Password set successfully. Please log in"));
 });
 
-/**
- * Lists every ACTIVE membership of the logged-in person (one per org),
- * flagging which one this session is currently in. Pending invites are
- * deliberately not included — those stay on the Dashboard card.
- */
-const listMyOrganizations = asyncHandler(async (req, res) => {
-  const organizations = await authService.listMyOrganizations(req.user._id, req.user.membershipId);
-
-  res.status(200).json(new ApiResponse(200, { organizations }, "Organizations fetched"));
-});
-
-/**
- * Switches the session to another org the person is an active member of:
- * re-issues the access + refresh cookies scoped to that membership.
- */
-const switchOrganization = asyncHandler(async (req, res) => {
-  const { membershipId } = req.body;
-  if (!membershipId) {
-    throw new ApiError(400, "membershipId is required");
-  }
-
-  const { person, membership, accessToken, refreshToken } = await authService.switchOrganization(
-    req.user._id,
-    membershipId
-  );
-
-  const safeUser = {
-    _id: person._id,
-    name: person.name,
-    email: person.email,
-    role: membership.role,
-    organization: membership.organization,
-  };
-
-  res
-    .status(200)
-    .cookie("accessToken", accessToken, cookieOptions)
-    .cookie("refreshToken", refreshToken, cookieOptions)
-    .json(new ApiResponse(200, { user: safeUser }, "Switched organization"));
-});
-
-export {
-  register,
-  login,
-  refresh,
-  logout,
-  forgotPassword,
-  resetPassword,
-  setInitialPassword,
-  listMyOrganizations,
-  switchOrganization,
-};
+export { register, login, refresh, logout, forgotPassword, resetPassword, setInitialPassword };

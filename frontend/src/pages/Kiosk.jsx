@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import axios from "axios";
 import { MdKey, MdMeetingRoom, MdVideocam } from "react-icons/md";
 import KioskNavbar from "../components/KioskNavbar";
+import useConfirm from "../hooks/useConfirm";
 
 const STORAGE_KEY = "facecheckin_kiosk_credentials";
 const CAPTURE_INTERVAL_MS = 3000;
@@ -33,6 +34,7 @@ const statusLabel = (r) => {
 };
 
 const Kiosk = () => {
+  const confirm = useConfirm();
   const [credentials, setCredentials] = useState(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : null;
@@ -133,8 +135,14 @@ const Kiosk = () => {
     setCredentials(creds);
   };
 
-  const handleResetKiosk = () => {
-    if (!window.confirm("Remove this device's kiosk setup?")) return;
+  const handleResetKiosk = async () => {
+    const ok = await confirm({
+      title: "Reset this kiosk?",
+      message: "This device's kiosk setup will be removed and you'll need to enter the credentials again.",
+      confirmText: "Reset",
+      tone: "danger",
+    });
+    if (!ok) return;
     localStorage.removeItem(STORAGE_KEY);
     setCredentials(null);
   };

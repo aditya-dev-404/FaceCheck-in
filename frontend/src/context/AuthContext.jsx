@@ -66,19 +66,8 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  // Moves the session into another org the person is an active member of.
-  // The server re-issues the cookies; we then reload the full profile so the
-  // Navbar etc. show the new org's name/logo/role. Callers should follow up
-  // with a full page load so every page refetches its org-scoped data.
-  const switchOrganization = async (membershipId) => {
-    await axiosInstance.post("/auth/switch-organization", { membershipId });
-    return fetchProfile();
-  };
-
   return (
-    <AuthContext.Provider
-      value={{ user, loading, login, register, logout, switchOrganization, refreshUser: fetchProfile }}
-    >
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser: fetchProfile }}>
       {children}
     </AuthContext.Provider>
   );

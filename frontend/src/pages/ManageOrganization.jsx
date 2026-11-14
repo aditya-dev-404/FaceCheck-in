@@ -2,10 +2,12 @@ import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
+import useConfirm from "../hooks/useConfirm";
 import { MdAdd, MdBusiness, MdCheck, MdContentCopy, MdDeleteOutline, MdKey, MdSave, MdUpload } from "react-icons/md";
 
 const ManageOrganization = () => {
   const { user } = useAuth();
+  const confirm = useConfirm();
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -69,9 +71,12 @@ const ManageOrganization = () => {
 
   const handleGenerateKioskCredentials = async () => {
     setKioskError("");
-    const confirmed = window.confirm(
-      "This will invalidate any previously configured kiosk device. Continue?"
-    );
+    const confirmed = await confirm({
+      title: "Generate new kiosk credentials?",
+      message: "This will invalidate any previously configured kiosk device.",
+      confirmText: "Generate",
+      tone: "danger",
+    });
     if (!confirmed) return;
     try {
       const { data } = await axiosInstance.post("/organizations/me/kiosk-credentials");

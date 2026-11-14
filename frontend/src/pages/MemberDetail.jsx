@@ -12,6 +12,7 @@ import {
 } from "react-icons/md";
 import axiosInstance from "../api/axiosInstance";
 import useAuth from "../hooks/useAuth";
+import useConfirm from "../hooks/useConfirm";
 import { getMemberDetails, getMemberStats, getMemberRecords, downloadMemberCsv } from "../api/members.api";
 
 const PRESETS = [
@@ -44,6 +45,7 @@ const StatTile = ({ label, value, hint }) => (
 const MemberDetail = () => {
   const { id } = useParams();
   const { user } = useAuth();
+  const confirm = useConfirm();
 
   const [member, setMember] = useState(null);
   const [memberError, setMemberError] = useState("");
@@ -138,7 +140,13 @@ const MemberDetail = () => {
   };
 
   const deleteFlagImage = async () => {
-    if (!window.confirm("Delete this flagged image? The member will remain flagged.")) return;
+    const ok = await confirm({
+      title: "Delete flagged image?",
+      message: "The member will stay flagged, but this review image will be gone.",
+      confirmText: "Delete image",
+      tone: "danger",
+    });
+    if (!ok) return;
     await axiosInstance.delete(`/users/${id}/flag-image`);
     fetchMember();
   };

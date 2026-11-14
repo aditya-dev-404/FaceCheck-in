@@ -36,13 +36,6 @@ const personSchema = new Schema(
       type: String,
       default: null,
     },
-    // The org this person was last signed into. Login uses it to land them
-    // back where they left off when they have 2+ active memberships.
-    lastActiveOrganization: {
-      type: Schema.Types.ObjectId,
-      ref: "Organization",
-      default: null,
-    },
     resetPasswordToken: {
       type: String,
       default: null,

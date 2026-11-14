@@ -7,15 +7,17 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { env } from "../config/env.js";
 
 /**
- * Verifies the access token (from httpOnly cookie or Authorization header),
- * resolves the Person + their active Membership, and attaches a merged
- * object to req.user so existing code that reads req.user.role,
- * req.user.organization, req.user.category, etc. keeps working unchanged.
- * The raw Membership doc is also attached as req.membership for anything
- * that needs it directly. Mount this on any route that requires a
- * logged-in user.
+ * Verifies the access token (httpOnly cookie or Authorization header),
+ * loads the Person, then looks up that person's single ACTIVE Membership
+ * (a person can only have one). Attaches a merged object to req.user so
+ * code reading req.user.role / organization / category / etc. keeps working,
+ * plus the raw Membership as req.membership.
+ *
+ * The token only identifies the person — the organization is always
+ * resolved fresh from the database, so joining, leaving or being removed
+ * takes effect immediately without re-issuing tokens.
  */
-const verifyJWT = asyncHandler(async (req, res, next) => {
+const authenticate = async (req, { requireOrganization }) => {
   const token =
     req.cookies?.accessToken ||
     req.header("Authorization")?.replace("Bearer ", "");
@@ -36,31 +38,46 @@ const verifyJWT = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "User for this token no longer exists");
   }
 
-  const membership = await Membership.findById(decoded.membershipId);
-  if (!membership) {
-    throw new ApiError(401, "Membership for this token no longer exists");
-  }
-  if (!membership.isActive) {
+  const membership = await Membership.findOne({ person: person._id, status: "active" });
+
+  if (membership && !membership.isActive) {
     throw new ApiError(403, "This account has been deactivated. Contact your organization admin.");
+  }
+  if (!membership && requireOrganization) {
+    throw new ApiError(403, "You are not part of any organization right now");
   }
 
   req.user = {
     ...person.toObject(),
-    role: membership.role,
-    organization: membership.organization,
-    category: membership.category,
-    isEnrolled: membership.isEnrolled,
-    isActive: membership.isActive,
-    isFlagged: membership.isFlagged,
-    flagReason: membership.flagReason,
-    flaggedAt: membership.flaggedAt,
-    flaggedImageUrl: membership.flaggedImageUrl,
-    flaggedImagePublicId: membership.flaggedImagePublicId,
-    membershipId: membership._id,
+    role: membership?.role ?? null,
+    organization: membership?.organization ?? null,
+    category: membership?.category ?? null,
+    isEnrolled: membership?.isEnrolled ?? false,
+    isActive: membership?.isActive ?? true,
+    isFlagged: membership?.isFlagged ?? false,
+    flagReason: membership?.flagReason ?? null,
+    flaggedAt: membership?.flaggedAt ?? null,
+    flaggedImageUrl: membership?.flaggedImageUrl ?? null,
+    flaggedImagePublicId: membership?.flaggedImagePublicId ?? null,
+    membershipId: membership?._id ?? null,
   };
   req.membership = membership;
+};
 
+/** Requires a logged-in person who currently belongs to an organization. */
+const verifyJWT = asyncHandler(async (req, res, next) => {
+  await authenticate(req, { requireOrganization: true });
   next();
 });
 
-export { verifyJWT };
+/**
+ * Requires a logged-in person, but allows one with no active organization
+ * (e.g. they left, were removed, or were never accepted anywhere yet).
+ * Used for profile, avatar, invites and logout.
+ */
+const verifyPerson = asyncHandler(async (req, res, next) => {
+  await authenticate(req, { requireOrganization: false });
+  next();
+});
+
+export { verifyJWT, verifyPerson };

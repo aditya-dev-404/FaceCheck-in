@@ -115,6 +115,11 @@ const removeMyAvatar = asyncHandler(async (req, res) => {
  * status "pending") from any organization.
  */
 const listMyInvites = asyncHandler(async (req, res) => {
+  // An admin can't join another organization, so invites are never shown to one.
+  if (req.membership?.role === "admin") {
+    return res.status(200).json(new ApiResponse(200, { invites: [] }, "Pending invites fetched"));
+  }
+
   const invites = await Membership.find({ person: req.user._id, status: "pending" })
     .select("category createdAt")
     .populate("organization", "name logoUrl");

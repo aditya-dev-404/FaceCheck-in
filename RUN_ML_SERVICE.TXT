@@ -1,0 +1,9 @@
+```bash
+cd ml-service
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+
+
+👇👇👇👇👇👇👇👇👇👇IF venv IS ALREADY activated👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇
+
+uvicorn main:app --reload --port 8000

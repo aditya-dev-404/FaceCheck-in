@@ -215,9 +215,8 @@ const ManageMembers = () => {
                 members.map((member) => (
                   <tr
                     key={member._id}
-                    className={`transition ${!member.isActive ? "opacity-70" : ""} ${
-                      editingId === member._id ? "bg-surface-raised" : "cursor-pointer hover:bg-surface-raised"
-                    }`}
+                    className={`transition ${!member.isActive ? "opacity-70" : ""} ${editingId === member._id ? "bg-surface-raised" : "cursor-pointer hover:bg-surface-raised"
+                      }`}
                     onClick={editingId === member._id ? undefined : () => navigate(`/manage-members/${member._id}`)}
                   >
                     {editingId === member._id ? (
@@ -344,9 +343,8 @@ const ManageMembers = () => {
                         </td>
                         <td className="px-4 py-3">
                           <span
-                            className={`inline-flex items-center gap-1 rounded-full bg-surface-raised px-2.5 py-0.5 text-xs font-medium shadow-clay-sm ${
-                              member.isEnrolled ? "text-success" : "text-text-muted"
-                            }`}
+                            className={`inline-flex items-center gap-1 rounded-full bg-surface-raised px-2.5 py-0.5 text-xs font-medium shadow-clay-sm ${member.isEnrolled ? "text-success" : "text-text-muted"
+                              }`}
                           >
                             {member.isEnrolled ? (
                               <MdCheckCircle aria-hidden="true" />
@@ -358,14 +356,12 @@ const ManageMembers = () => {
                         </td>
                         <td className="px-4 py-3">
                           <span
-                            className={`inline-flex items-center gap-1.5 rounded-full bg-surface-raised px-2.5 py-0.5 text-xs font-medium shadow-clay-sm ${
-                              member.isActive && member.status !== "pending" ? "text-success" : "text-text-muted"
-                            }`}
+                            className={`inline-flex items-center gap-1.5 rounded-full bg-surface-raised px-2.5 py-0.5 text-xs font-medium shadow-clay-sm ${member.isActive && member.status !== "pending" ? "text-success" : "text-text-muted"
+                              }`}
                           >
                             <span
-                              className={`h-1.5 w-1.5 rounded-full ${
-                                member.isActive && member.status !== "pending" ? "bg-success" : "bg-text-muted"
-                              }`}
+                              className={`h-1.5 w-1.5 rounded-full ${member.isActive && member.status !== "pending" ? "bg-success" : "bg-text-muted"
+                                }`}
                             />
                             {member.status === "pending" ? "Invite pending" : member.isActive ? "Active" : "Deactivated"}
                           </span>
@@ -446,6 +442,11 @@ const ManageMembers = () => {
             <div>
               <h3 className="text-lg font-semibold text-text">{viewingMember.name} — Flagged review</h3>
               <p className="mt-1 text-sm text-text-muted">{viewingMember.flagReason}</p>
+              {viewingMember.flaggedAt && (
+                <p className="mt-1 text-xs text-text-muted">
+                  Flagged on {new Date(viewingMember.flaggedAt).toLocaleString()}
+                </p>
+              )}
             </div>
 
             {viewingMember.flaggedImageUrl ? (

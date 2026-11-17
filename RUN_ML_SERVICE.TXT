@@ -6,4 +6,6 @@ source venv/bin/activate        # Windows: venv\Scripts\activate
 
 👇👇👇👇👇👇👇👇👇👇IF venv IS ALREADY activated👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇
 
-uvicorn main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000
+
+filter date 20-08-2026 to 16-11-2026
